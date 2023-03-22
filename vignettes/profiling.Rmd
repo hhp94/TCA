@@ -14,6 +14,106 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r setup, eval = F}
+# Synopsis
+* TCA is a great package. But it is running unexpectedly slowly. A project with
+a moderately sized (400,000 CpGs * 1000 Samples * 6 Cell Types, vars.mle = FALSE)
+couldn't converge after 12 hours and hit out of memory error with 120GB of RAM.
+* This fork is created to profile the performance of TCA and see if there are 
+bottlenecks we can resolve.  
+
+```{r setup, eval = FALSE}
+library(profvis) # Profiling tool
 library(devtools)
+library(tictoc)
+load_all()
+
+# Simulate the data
+set.seed(1234)
+data <- test_data(400000, 20, 6, 1, 1, 0.01)
+lapply(data, dim)
+
+set.seed(1234)
+# Run the data sequentially first.
+sequential <- profvis({
+  tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+})
+
+sequential
 ```
+
+* The sequential run took 54s to be done
+* We see that in `model_fit.R/tca_fit.R`, r is spending 
+  + High peak memory (1.4GB) and decent amount of time (6s) to call `tca.fit_means_vars`. 
+  This is the internal loop convergence of TCA. This is probablly what 
+  bottlenecked the loop in parallel mode because the high memory overhead.  
+  + High peak memory (20 GB) and a lot of time (30s) to call `data.frame()`.
+  before `lm()` to calculate the `gammas_hat_pvals.joint`.  
+* Let's try to replace the `data.frame()` call with a straight `cbind()` call to 
+create a X matrix. Then we can use `RcppEigen::fastLm()` to directly call 
+the data matrix and the vector y.  
+* This is potentially a dangerous trade-off between speed and safety. But 
+since NA is already expected to be taken care of by user, we should be safe to 
+make this trade off. Other issues such as full rank matrix should still cause 
+errors. We can create a test case for this.  
+
+# Check lm functions
+```{r, eval = FALSE}
+lm_model <- lm(cyl ~ mpg + hp + disp, data = mtcars)
+fastlm_model <- RcppEigen::fastLm(
+  cbind(1, as.matrix(mtcars[, which(names(mtcars) %in% c("mpg", "hp", "disp"))])),
+  mtcars[, "cyl"]
+)
+```
+
+* Results are almost identical
+```{r}
+summary(lm_model) |> names()
+summary(lm_model)$coefficients
+summary(fastlm_model)$coefficients
+```
+
+```{r, eval = FALSE}
+# para <- profvis({
+#   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+#                  parallel = TRUE, num_cores = 3)
+# })
+
+df <- data.frame(
+  y = X_tilde[, j], 
+  cbind(
+    W / t(repmat(W_norms[, j], k, 1)), 
+    if (p2 > 0) {C2 / t(repmat(W_norms[, j], p2, 1))} else {C2}, 
+    C1_null
+  )
+)
+
+tca_fit_debug <- qs::qread("./data-raw/tca_fit_profile.qs")
+tca_fit_debug$t1
+
+profvis({
+  test <- cbind(tca_fit_debug$t1, tca_fit_debug$t2)
+  df <- data.frame(test)
+})
+
+test <- lm(vs ~ mpg, mtcars)
+test$model
+
+model.matrix(vs ~ mpg, data = mtcars)
+mtcars[, "mpg", drop = FALSE]
+mtcars[, "vs"]
+
+cbind(1, mtcars[, "mpg", drop = FALSE])
+
+lm.fit(cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])), mtcars[, "vs"])
+Rfast::lmfit()
+RcppEigen::fastLm(
+  X = cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])), 
+  y = mtcars[, "vs"]
+  ) |> summary()
+
+# insert into model_fit.R/tca.fit.R
+message("saving profile")
+qs::qsave(list(t1 = t1, t2 = t2, p2 = p2, C2 = C2, W_norms = W_norms),
+          "./data-raw/tca_fit_profile.qs")
+```
+

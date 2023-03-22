@@ -1,6 +1,12 @@
-library("TCA")
-
-context("Test tca fit")
+test_that("tca generated the same result as the fixture created in 1.2.1", {
+  data <- readRDS(test_path("fixtures", "simdata.rds"))
+  fit_1_2_1_results <- readRDS(test_path("fixtures", "simdata_fit_1_2_1.rds"))
+  
+  set.seed(1234)
+  tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+  
+  expect_equal(rlang::hash(fit_1_2_1_results), rlang::hash(tca.mdl))
+})
 
 test_that("Verify that p-values are not returned for gamma and delta of constrain_mu == TRUE", {
   skip_on_cran()
@@ -23,8 +29,6 @@ test_that("Verify that p-values are not returned for gamma and delta of constrai
   expect_equal(nrow(tca.mdl$gammas_hat_pvals) == m & ncol(tca.mdl$gammas_hat_pvals) == p1 * k, TRUE)
   expect_equal(nrow(tca.mdl$deltas_hat_pvals) == m & ncol(tca.mdl$deltas_hat_pvals) == p2, TRUE)
 })
-
-
 
 test_that("Verify that setting vars.mle to either TRUE or FALSE provides similar results", {
   skip_on_cran()

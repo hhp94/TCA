@@ -1,7 +1,4 @@
-library("TCA")
-
-context("Test test_data")
-
+# Test test_data ---------------------------------------
 test_that("generate test data", {
   n <- 200
   m <- 100
@@ -22,7 +19,12 @@ test_that("generate test data", {
 
   tca.mdl <- tca(X, W, C1 = C1, C2 = C2, refit_W = TRUE, refit_W.sparsity = nrow(X), parallel = FALSE, log_file = NULL)
   Z_hat <- tensor(X, tca.mdl, log_file = NULL)
-  expect_is(Z_hat[[1]], "matrix")
-  expect_is(Z_hat[[2]], "matrix")
-  expect_is(Z_hat[[3]], "matrix")
+  expect_true("matrix" %in% class(Z_hat[[1]]))
+  expect_true("matrix" %in% class(Z_hat[[2]]))
+  expect_true("matrix" %in% class(Z_hat[[3]]))
+  
+  expect_type(Z_hat[[1]], "double")
+  expect_type(Z_hat[[2]], "double")
+  expect_type(Z_hat[[3]], "double")
 })
+
