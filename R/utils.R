@@ -19,50 +19,49 @@
 #' @importFrom stats rnorm
 #' @importFrom stats runif
 #' @importFrom stats sd
-start_logger <- function(log_file, debug, verbose = TRUE){
+start_logger <- function(log_file, debug, verbose = TRUE) {
   config_level <- if (debug) "debug" else "default"
   Sys.setenv(R_CONFIG_ACTIVE = config_level)
-  if (is.null(log_file)){
+  if (is.null(log_file)) {
     invisible(flog.appender(appender.console()))
-  }else{
+  } else {
     invisible(flog.appender(appender.tee(log_file)))
   }
-  invisible(flog.threshold(if(debug) "DEBUG" else "INFO"))
+  invisible(flog.threshold(if (debug) "DEBUG" else "INFO"))
   if (!verbose) (flog.threshold("ERROR"))
 }
 
 
-init_cluster <- function(num_cores = NULL){
+init_cluster <- function(num_cores = NULL) {
   flog.debug("Initiate cluster...")
   cl <- makeCluster(get_num_cores(num_cores))
-  flog.debug("Parallel is on with %s nodes.",get_num_cores(num_cores))
-  invisible(clusterEvalQ(cl, c(library("pracma"), library("matrixcalc"), library("nloptr") )))
+  flog.debug("Parallel is on with %s nodes.", get_num_cores(num_cores))
+  invisible(clusterEvalQ(cl, c(library("pracma"), library("matrixcalc"), library("nloptr"))))
   flog.debug("Packages were loaded into the cluster nodes.")
   return(cl)
 }
 
 
-stop_cluster <- function(cl){
+stop_cluster <- function(cl) {
   flog.debug("Stop cluster")
   stopCluster(cl)
 }
 
 
-get_num_cores <- function(num_cores){
-  if (is.null(num_cores)){
-    return (max(1,detectCores() - 1))
-  }else{
-    return (num_cores)
+get_num_cores <- function(num_cores) {
+  if (is.null(num_cores)) {
+    return(max(1, detectCores() - 1))
+  } else {
+    return(num_cores)
   }
 }
 
 
-assert <- function (expr, error) {
-  if (! expr) stop(error, call. = FALSE)
+assert <- function(expr, error) {
+  if (!expr) stop(error, call. = FALSE)
 }
 
-tensor.validate_input <- function(X, scale, parallel, num_cores, log_file, debug){
-
+tensor.validate_input <- function(X, scale, parallel, num_cores, log_file, debug) {
   flog.debug("Validating input types...")
 
   assert(is.matrix(X), "X must be of class 'matrix'")
@@ -72,11 +71,9 @@ tensor.validate_input <- function(X, scale, parallel, num_cores, log_file, debug
   assert(is.logical(parallel), "parallel must be of class 'logical'")
   assert(is.null(num_cores) | is.numeric(num_cores), "argument num_cores must take a numric value or NULL")
   assert(is.character(log_file) | is.null(log_file), "log_file must be of class 'character' or NULL")
-
 }
 
-tca.validate_input <- function(X, W, C1, C1.map, C2, refit_W, refit_W.features, refit_W.sparsity, refit_W.sd_threshold, tau, constrain_mu, parallel, num_cores, max_iters, log_file, debug){
-
+tca.validate_input <- function(X, W, C1, C1.map, C2, refit_W, refit_W.features, refit_W.sparsity, refit_W.sd_threshold, tau, constrain_mu, parallel, num_cores, max_iters, log_file, debug) {
   flog.debug("Validating input types...")
 
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
@@ -104,14 +101,14 @@ tca.validate_input <- function(X, W, C1, C1.map, C2, refit_W, refit_W.features, 
   if (!is.null(C2)) assert(!is.null(rownames(C2)) & !is.null(colnames(C2)), "C2 must have row names and column names")
 
   flog.debug("Validating input conditions...")
-  if (refit_W) assert(refit_W.sparsity <= nrow(X) , "argument refit_W.sparsity must satisfy refit_W.sparsity <= nrow(X)")
-  if (refit_W) assert(refit_W.sd_threshold >= 0 , "argument refit_W.sd_threshold must satisfy refit_W.sd_threshold >= 0")
-  if (!(is.null(C1.map))) assert(constrain_mu , "argument C1.map cannot be useed with constrain_mu set to FALSE")
+  if (refit_W) assert(refit_W.sparsity <= nrow(X), "argument refit_W.sparsity must satisfy refit_W.sparsity <= nrow(X)")
+  if (refit_W) assert(refit_W.sd_threshold >= 0, "argument refit_W.sd_threshold must satisfy refit_W.sd_threshold >= 0")
+  if (!(is.null(C1.map))) assert(constrain_mu, "argument C1.map cannot be useed with constrain_mu set to FALSE")
 
   flog.debug("Validating matrix dimensions...")
-  assert(dim(X)[2] == dim(W)[1] , "The number of columns in X is inconsistent with the number of rows in W")
-  if (!is.null(C1)) assert(dim(X)[2] == dim(C1)[1] , "The number of columns in X is inconsistent with the number of rows in C1")
-  if (!is.null(C2)) assert(dim(X)[2] == dim(C2)[1] , "The number of columns in X is inconsistent with the number of rows in C2")
+  assert(dim(X)[2] == dim(W)[1], "The number of columns in X is inconsistent with the number of rows in W")
+  if (!is.null(C1)) assert(dim(X)[2] == dim(C1)[1], "The number of columns in X is inconsistent with the number of rows in C1")
+  if (!is.null(C2)) assert(dim(X)[2] == dim(C2)[1], "The number of columns in X is inconsistent with the number of rows in C2")
 
   flog.debug("Validating the order of observations across matrices...")
   assert(all(colnames(X) == rownames(W)), "The order of observations in W (in the rows) must match the order of the observations in X (in the columns).")
@@ -122,17 +119,16 @@ tca.validate_input <- function(X, W, C1, C1.map, C2, refit_W, refit_W.features, 
   assert(all(W >= 0), "The entries of W must be non-negative.")
   assert(all(abs(rowSums(W) - 1) < 0.0001), "Each row in W must sum up to 1.")
 
-  if (!is.null(C1.map)) assert(sum(C1.map == 1 | C1.map == 0) == ncol(C1.map)*nrow(C1.map), "The entries of C1.map must all be 0 or 1")
+  if (!is.null(C1.map)) assert(sum(C1.map == 1 | C1.map == 0) == ncol(C1.map) * nrow(C1.map), "The entries of C1.map must all be 0 or 1")
 
   if (!is.null(tau)) assert(tau >= 0, "tau must be non-negative")
 
   th <- config[["min_sd"]]**2
-  assert(sum(rowVars(X) < th) == 0, paste("X must not include features with variance less than ",as.character(th),sep=""))
-
+  assert(sum(rowVars(X) < th) == 0, paste("X must not include features with variance less than ", as.character(th), sep = ""))
 }
 
 
-tcasub.validate_input <- function(tca.mdl, features, log_file, debug){
+tcasub.validate_input <- function(tca.mdl, features, log_file, debug) {
   flog.debug("Validating input...")
   assert(is.list(tca.mdl) & is.matrix(tca.mdl[["W"]]) &
     is.matrix(tca.mdl[["mus_hat"]]) &
@@ -148,19 +144,18 @@ tcasub.validate_input <- function(tca.mdl, features, log_file, debug){
 }
 
 
-tcareg.validate_input <- function(X, W, y, C3, test, null_model, alternative_model, save_results, fast_mode, output, sort_results, parallel, num_cores, log_file, features_metadata ,debug){
-
+tcareg.validate_input <- function(X, W, y, C3, test, null_model, alternative_model, save_results, fast_mode, output, sort_results, parallel, num_cores, log_file, features_metadata, debug) {
   flog.debug("Validating input type for tcareg...")
 
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
 
-  options <- c("marginal","marginal_conditional","joint","single_effect","custom")
+  options <- c("marginal", "marginal_conditional", "joint", "single_effect", "custom")
   flog.debug("Validating input type...")
   assert(is.matrix(X), "argument X must be of class 'matrix'")
   assert(is.matrix(y), "argument y must be of class 'matrix'")
   assert(is.null(C3) | is.matrix(C3), "argument C3 must be of class 'matrix' or NULL")
 
-  assert(is.element(test,options), paste("argument test must be one of the following options: ", paste(options, collapse=', ' ),sep = ""))
+  assert(is.element(test, options), paste("argument test must be one of the following options: ", paste(options, collapse = ", "), sep = ""))
 
   assert(is.null(num_cores) | is.numeric(num_cores), "argument num_cores must take a numric value or NULL")
   assert(is.null(null_model) | is.character(null_model), "argument null_model must take a character value or NULL")
@@ -180,21 +175,21 @@ tcareg.validate_input <- function(X, W, y, C3, test, null_model, alternative_mod
   assert(!is.null(rownames(W)) & !is.null(colnames(W)), "W must have row names and column names")
   assert(!is.null(rownames(y)), "y must have row names")
   if (!is.null(C3)) assert(!is.null(rownames(C3)) & !is.null(colnames(C3)), "C3 must have row names and column names")
-  if (test == "custom") assert( (!is.null(alternative_model)), "argument alternative_model cannot be NULL when test=custom")
-  if ( (!is.null(alternative_model))){
+  if (test == "custom") assert((!is.null(alternative_model)), "argument alternative_model cannot be NULL when test=custom")
+  if ((!is.null(alternative_model))) {
     assert(test == "custom", "argument test must be set to 'custom' if argument alternative_model is not NULL")
     # make sure that null_model and alternative_model include labels that exist in the column names of W
     assert(all(is.element(null_model, colnames(W))) & all(is.element(alternative_model, colnames(W))), "null_model and alternative_model must include values that exist in the column names of W")
-    if ( (!is.null(null_model))){
+    if ((!is.null(null_model))) {
       # make sure the two models are nested
       assert(length(setdiff(alternative_model, null_model)) > 0 & length(setdiff(null_model, alternative_model)) == 0, "null_model must be nested within alternative_model")
     }
   }
-  assert(!( (sort_results & test == "marginal_conditional") & fast_mode), "sort_results cannot be set to true under fast_mode == TRUE and test = 'marginal_conditional'")
+  assert(!((sort_results & test == "marginal_conditional") & fast_mode), "sort_results cannot be set to true under fast_mode == TRUE and test = 'marginal_conditional'")
 
   flog.debug("Validating matrix dimensions...")
-  if (!is.null(C3)) assert(dim(X)[2] == dim(C3)[1] , "the number of columns in X is inconsistent with the number of rows in C3")
-  assert(dim(X)[2] == length(y) , "the number of columns in X is inconsistent with the number of rows in y")
+  if (!is.null(C3)) assert(dim(X)[2] == dim(C3)[1], "the number of columns in X is inconsistent with the number of rows in C3")
+  assert(dim(X)[2] == length(y), "the number of columns in X is inconsistent with the number of rows in y")
 
   flog.debug("Validating the order of observations across matrices...")
   assert(all(colnames(X) == rownames(W)), "The order of observations in W (in the rows) must match the order of the observations in X (in the columns).")
@@ -202,8 +197,7 @@ tcareg.validate_input <- function(X, W, y, C3, test, null_model, alternative_mod
   assert(all(colnames(X) == rownames(y)), "The order of observations in y (in the rows) must match the order of the observations in X (in the columns).")
 
   th <- config[["min_sd"]]**2
-  assert(sum(rowVars(X) < th) == 0, paste("X must not include features with variance less than ",as.character(th),sep=""))
-
+  assert(sum(rowVars(X) < th) == 0, paste("X must not include features with variance less than ", as.character(th), sep = ""))
 }
 
 
@@ -211,31 +205,31 @@ tcareg.validate_input <- function(X, W, y, C3, test, null_model, alternative_mod
 # ll0 - vector with the log likelihood values for m tests under the null model
 # ll1 - vector with the log likelihood values for m tests under the alternative model
 # df - vector with the degrees of freedom for each of the m tests
-lrt.test <- function(ll0, ll1, df){
+lrt.test <- function(ll0, ll1, df) {
   flog.debug("Running lrt.test...")
   m <- length(ll1)
-  stats = numeric(m)
-  pvals = numeric(m)
-  for (j in 1:m){
-    stats[j] <- -2*(ll0[j]-ll1[j])
-    pvals[j] <- pchisq(stats[j], df = df, lower.tail=FALSE)
+  stats <- numeric(m)
+  pvals <- numeric(m)
+  for (j in 1:m) {
+    stats[j] <- -2 * (ll0[j] - ll1[j])
+    pvals[j] <- pchisq(stats[j], df = df, lower.tail = FALSE)
   }
   return(list("stats" = stats, "pvals" = pvals))
 }
 
 
-save_association_results <- function(res, output, test, fast_mode, alternative_model, feature_ids, W_names, C3_names, sort_results, features_metadata){
+save_association_results <- function(res, output, test, fast_mode, alternative_model, feature_ids, W_names, C3_names, sort_results, features_metadata) {
   flog.debug("Running save_association_results...")
   m <- length(feature_ids)
-  metadata <- if (is.null(features_metadata)) matrix(0,m,0) else parse_features_metadata(feature_ids, features_metadata)
-  if (test == "marginal" | (!fast_mode & test == "marginal_conditional") ){
-    for (i in 1:length(res)){
-      filename <- paste(output, ".", test, ".", W_names[i], ".txt", sep ="")
+  metadata <- if (is.null(features_metadata)) matrix(0, m, 0) else parse_features_metadata(feature_ids, features_metadata)
+  if (test == "marginal" | (!fast_mode & test == "marginal_conditional")) {
+    for (i in 1:length(res)) {
+      filename <- paste(output, ".", test, ".", W_names[i], ".txt", sep = "")
       wnames <- if (test == "marginal") W_names[i] else W_names
       save_association_results.save(res[[i]], test, fast_mode, filename, feature_ids, sort_results, wnames, C3_names, metadata)
     }
-  }else{
-    filename <- paste(output, ".", test, ".txt", sep ="")
+  } else {
+    filename <- paste(output, ".", test, ".txt", sep = "")
     keep <- 1:length(W_names)
     if (test == "custom") keep <- alternative_model
     if (test == "single_effect") keep <- 1
@@ -244,35 +238,35 @@ save_association_results <- function(res, output, test, fast_mode, alternative_m
 }
 
 
-save_association_results.save <- function(res, test, fast_mode, filename, feature_ids, sort_results, W_names, C3_names, metadata){
+save_association_results.save <- function(res, test, fast_mode, filename, feature_ids, sort_results, W_names, C3_names, metadata) {
   flog.debug("save_association_results.save...")
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
   m <- length(feature_ids)
-  betas <- if(length(W_names) == 1) "beta" else unlist(lapply(1:length(W_names), function(i) paste("beta.",W_names[i],sep="")))
-  pvals <- if(test == "marginal_conditional" & fast_mode) unlist(lapply(1:length(W_names), function(i) paste("pval.",W_names[i],sep=""))) else "pval"
-  qvals <- if(test == "marginal_conditional" & fast_mode) unlist(lapply(1:length(W_names), function(i) paste("qval.",W_names[i],sep=""))) else "qval"
-  alpha <- if (length(C3_names)) unlist(lapply(1:length(C3_names), function(i) paste("alpha.",C3_names[i],sep=""))) else c()
-  df <- if(is.null(res$df)) c() else "df"
-  df.values <- if(is.null(res$df)) matrix(0,m,0) else matrix(0,m,1)+res$df
+  betas <- if (length(W_names) == 1) "beta" else unlist(lapply(1:length(W_names), function(i) paste("beta.", W_names[i], sep = "")))
+  pvals <- if (test == "marginal_conditional" & fast_mode) unlist(lapply(1:length(W_names), function(i) paste("pval.", W_names[i], sep = ""))) else "pval"
+  qvals <- if (test == "marginal_conditional" & fast_mode) unlist(lapply(1:length(W_names), function(i) paste("qval.", W_names[i], sep = ""))) else "qval"
+  alpha <- if (length(C3_names)) unlist(lapply(1:length(C3_names), function(i) paste("alpha.", C3_names[i], sep = ""))) else c()
+  df <- if (is.null(res$df)) c() else "df"
+  df.values <- if (is.null(res$df)) matrix(0, m, 0) else matrix(0, m, 1) + res$df
 
-  if (fast_mode){
+  if (fast_mode) {
     data <- data.frame(feature_ids, metadata, res$pval, res$qval, res$beta, res$alternative_ll, res$stat, df.values, res$intercept, res$alpha, res$phi)
     colnames(data) <- c("ID", colnames(metadata), pvals, qvals, betas, "alternative_ll", "stat", df, "intercept", alpha, "phi")
-  }else{
+  } else {
     data <- data.frame(feature_ids, metadata, res$pval, res$qval, res$beta, res$null_ll, res$alternative_ll, res$stat, res$df, res$intercept, res$alpha, res$phi)
     colnames(data) <- c("ID", colnames(metadata), "pval", "qval", betas, "null_ll", "alternative_ll", "chi_squared", "df", "intercept", alpha, "phi")
   }
-  if (sort_results){
+  if (sort_results) {
     # sort by p-value
-    data <- data[order(data$pval),]
+    data <- data[order(data$pval), ]
   }
   fwrite(data, file = filename, row.names = FALSE, col.names = TRUE, quote = FALSE, sep = config$sep, showProgress = config$show_progress, verbose = config$verbose)
 }
 
 
-parse_features_metadata <- function(feature_ids, features_metadata_file){
+parse_features_metadata <- function(feature_ids, features_metadata_file) {
   flog.debug("parse_features_metadata...")
-  metadata <- data.frame(fread(file = features_metadata_file, header=TRUE, showProgress=FALSE))
-  rownames(metadata) <- metadata[,1]
-  return(metadata[feature_ids,2:ncol(metadata)])
+  metadata <- data.frame(fread(file = features_metadata_file, header = TRUE, showProgress = FALSE))
+  rownames(metadata) <- metadata[, 1]
+  return(metadata[feature_ids, 2:ncol(metadata)])
 }

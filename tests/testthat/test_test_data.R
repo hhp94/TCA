@@ -3,8 +3,12 @@ library("TCA")
 context("Test test_data")
 
 test_that("generate test data", {
-
-  n = 200; m = 100; k = 3; tau = 0.01; p1 = 2; p2 = 2;
+  n <- 200
+  m <- 100
+  k <- 3
+  tau <- 0.01
+  p1 <- 2
+  p2 <- 2
   res <- test_data(n, m, k, p1, p2, tau, log_file = NULL)
 
   X <- res$X
@@ -21,5 +25,4 @@ test_that("generate test data", {
   expect_is(Z_hat[[1]], "matrix")
   expect_is(Z_hat[[2]], "matrix")
   expect_is(Z_hat[[3]], "matrix")
-
 })

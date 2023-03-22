@@ -54,8 +54,7 @@
 #' @references Rahmani E, Zaitlen N, Baran Y, Eng C, Hu D, Galanter J, Oh S, Burchard EG, Eskin E, Zou J, Halperin E. Sparse PCA corrects for cell type heterogeneity in epigenome-wide association studies. Nature Methods 2016.
 #'
 #' @export tca
-tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refit_W.features = NULL, refit_W.sparsity = 500, refit_W.sd_threshold = 0.02, tau = NULL, vars.mle = FALSE, constrain_mu = FALSE, parallel = FALSE, num_cores = NULL, max_iters = 10, log_file = "TCA.log", debug = FALSE, verbose = TRUE){
-
+tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refit_W.features = NULL, refit_W.sparsity = 500, refit_W.sd_threshold = 0.02, tau = NULL, vars.mle = FALSE, constrain_mu = FALSE, parallel = FALSE, num_cores = NULL, max_iters = 10, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
 
   flog.info("Starting tca...")
@@ -72,17 +71,17 @@ tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refi
 
   flog.info("Validating input...")
   tca.validate_input(X, W, C1, C1.map, C2, refit_W, refit_W.features, refit_W.sparsity, refit_W.sd_threshold, tau, constrain_mu, parallel, num_cores, max_iters, log_file, debug)
-  if (is.null(C1)) C1 <- matrix(0, nrow=ncol(X), ncol=0)
-  if (is.null(C2)) C2 <- matrix(0, nrow=ncol(X), ncol=0)
+  if (is.null(C1)) C1 <- matrix(0, nrow = ncol(X), ncol = 0)
+  if (is.null(C2)) C2 <- matrix(0, nrow = ncol(X), ncol = 0)
 
-  C1.map <- if (is.null(C1.map)) matrix(1,ncol(C1),ncol(W)) else C1.map
+  C1.map <- if (is.null(C1.map)) matrix(1, ncol(C1), ncol(W)) else C1.map
 
   msg <- "Fitting the TCA model..."
-  if (refit_W){
+  if (refit_W) {
     flog.info("Starting re-estimation of W...")
-    if (is.null(refit_W.features)){
+    if (is.null(refit_W.features)) {
       flog.info("Performing feature selection using refactor...")
-      ref <- refactor.run(X = X, k = ncol(W), sparsity = refit_W.sparsity, C = if (ncol(cbind(C1,C2))) cbind(C1,C2) else NULL, C.remove = FALSE, sd_threshold = refit_W.sd_threshold, num_comp = NULL, rand_svd = config$rand_svd, log_file = NULL, logger_on = FALSE, verbose = verbose)
+      ref <- refactor.run(X = X, k = ncol(W), sparsity = refit_W.sparsity, C = if (ncol(cbind(C1, C2))) cbind(C1, C2) else NULL, C.remove = FALSE, sd_threshold = refit_W.sd_threshold, num_comp = NULL, rand_svd = config$rand_svd, log_file = NULL, logger_on = FALSE, verbose = verbose)
       refit_W.features <- ref$ranked_list[1:refit_W.sparsity]
     }
     X_sub <- subset(X, subset = rownames(X) %in% refit_W.features)
@@ -104,7 +103,7 @@ tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refi
   gammas_hat_pvals <- mdl[["gammas_hat_pvals"]]
   gammas_hat_pvals.joint <- mdl[["gammas_hat_pvals.joint"]]
   flog.info("Finished tca.")
-  return (list("W" = W, "mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "tau_hat" = tau_hat, "deltas_hat" = deltas_hat, "gammas_hat" = gammas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "C1" = C1, "C2" = C2) )
+  return(list("W" = W, "mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "tau_hat" = tau_hat, "deltas_hat" = deltas_hat, "gammas_hat" = gammas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "C1" = C1, "C2" = C2))
 }
 
 
@@ -137,29 +136,27 @@ tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refi
 #' data <- test_data(50, 20, 3, 0, 0, 0.01)
 #' tca.mdl <- tca(X = data$X, W = data$W)
 #' tca.mdl.subset <- tcasub(tca.mdl, rownames(data$X)[1:10])
-#' y <- matrix(rexp(50, rate=.1), ncol=1)
+#' y <- matrix(rexp(50, rate = .1), ncol = 1)
 #' rownames(y) <- rownames(data$W)
 #' # run tcareg test with an outcome y:
-#' res <- tcareg(data$X[1:10,], tca.mdl.subset, y, test = "joint")
+#' res <- tcareg(data$X[1:10, ], tca.mdl.subset, y, test = "joint")
 #'
 #' @export tcasub
-tcasub <- function(tca.mdl, features, log_file = "TCA.log", debug = FALSE, verbose = TRUE){
-
+tcasub <- function(tca.mdl, features, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
   flog.info("Starting tcasub...")
   tcasub.validate_input(tca.mdl, features, log_file, debug)
   flog.info("Finished tcasub.")
 
-  mus_hat <- as.matrix(tca.mdl[["mus_hat"]][features,,drop=F])
-  sigmas_hat <- as.matrix(tca.mdl[["sigmas_hat"]][features,,drop=F])
-  deltas_hat <- as.matrix(tca.mdl[["deltas_hat"]][features,,drop=F])
-  gammas_hat <- as.matrix(tca.mdl[["gammas_hat"]][features,,drop=F])
-  deltas_hat_pvals <- if(is.null(tca.mdl[["deltas_hat_pvals"]])) NULL else as.matrix(tca.mdl[["deltas_hat_pvals"]][features,,drop=F])
-  gammas_hat_pvals <- if(is.null(tca.mdl[["gammas_hat_pvals"]])) NULL else as.matrix(tca.mdl[["gammas_hat_pvals"]][features,,drop=F])
-  gammas_hat_pvals.joint <- if (is.null(tca.mdl[["gammas_hat_pvals.joint"]])) NULL else as.matrix(tca.mdl[["gammas_hat_pvals.joint"]][features,,drop=F])
+  mus_hat <- as.matrix(tca.mdl[["mus_hat"]][features, , drop = F])
+  sigmas_hat <- as.matrix(tca.mdl[["sigmas_hat"]][features, , drop = F])
+  deltas_hat <- as.matrix(tca.mdl[["deltas_hat"]][features, , drop = F])
+  gammas_hat <- as.matrix(tca.mdl[["gammas_hat"]][features, , drop = F])
+  deltas_hat_pvals <- if (is.null(tca.mdl[["deltas_hat_pvals"]])) NULL else as.matrix(tca.mdl[["deltas_hat_pvals"]][features, , drop = F])
+  gammas_hat_pvals <- if (is.null(tca.mdl[["gammas_hat_pvals"]])) NULL else as.matrix(tca.mdl[["gammas_hat_pvals"]][features, , drop = F])
+  gammas_hat_pvals.joint <- if (is.null(tca.mdl[["gammas_hat_pvals.joint"]])) NULL else as.matrix(tca.mdl[["gammas_hat_pvals.joint"]][features, , drop = F])
 
-  return( list("W" = tca.mdl[["W"]], "mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "tau_hat" = tca.mdl[["tau_hat"]], "deltas_hat" = deltas_hat, "gammas_hat" = gammas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "C1" = as.matrix(tca.mdl[["C1"]]), "C2" = as.matrix(tca.mdl[["C2"]])) )
-
+  return(list("W" = tca.mdl[["W"]], "mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "tau_hat" = tca.mdl[["tau_hat"]], "deltas_hat" = deltas_hat, "gammas_hat" = gammas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "C1" = as.matrix(tca.mdl[["C1"]]), "C2" = as.matrix(tca.mdl[["C2"]])))
 }
 
 
@@ -188,8 +185,7 @@ tcasub <- function(tca.mdl, features, log_file = "TCA.log", debug = FALSE, verbo
 #' @references Rahmani E, Schweiger R, Rhead B, Criswell LA, Barcellos LF, Eskin E, Rosset S, Sankararaman S, Halperin E. Cell-type-specific resolution epigenetics without the need for cell sorting or single-cell biology. Nature Communications 2019.
 #'
 #' @export tensor
-tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL, log_file = "TCA.log", debug = FALSE, verbose = TRUE){
-
+tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
 
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
@@ -213,7 +209,7 @@ tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL
   C1 <- tca.mdl[["C1"]]
   C2 <- tca.mdl[["C2"]]
 
-  return( estimate_Z(t(X), W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, scale, parallel, num_cores) )
+  return(estimate_Z(t(X), W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, scale, parallel, num_cores))
 }
 
 
@@ -277,25 +273,28 @@ tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL
 #' p2 <- 1
 #' data <- test_data(n, m, k, p1, p2, 0.01)
 #' tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
-#' y <- matrix(rexp(n, rate=.1), ncol=1)
+#' y <- matrix(rexp(n, rate = .1), ncol = 1)
 #' rownames(y) <- rownames(data$W)
 #' # marginal conditional test:
 #' res0 <- tcareg(data$X, tca.mdl, y)
 #' # joint test:
 #' res1 <- tcareg(data$X, tca.mdl, y, test = "joint")
 #' # custom test, testing for a joint effect of sources 1,2 while accounting for source 3
-#' res2 <- tcareg(data$X, tca.mdl, y, test = "custom", null_model = c("3"),
-#' alternative_model = c("1","2","3"))
+#' res2 <- tcareg(data$X, tca.mdl, y,
+#'   test = "custom", null_model = c("3"),
+#'   alternative_model = c("1", "2", "3")
+#' )
 #' # custom test, testing for a joint effect of sources 1,2 assuming no effects under the null
-#' res3 <- tcareg(data$X, tca.mdl, y, test = "custom", null_model = NULL,
-#' alternative_model = c("1","2"))
+#' res3 <- tcareg(data$X, tca.mdl, y,
+#'   test = "custom", null_model = NULL,
+#'   alternative_model = c("1", "2")
+#' )
 #'
 #' @references Rahmani E, Schweiger R, Rhead B, Criswell LA, Barcellos LF, Eskin E, Rosset S, Sankararaman S, Halperin E. Cell-type-specific resolution epigenetics without the need for cell sorting or single-cell biology. Nature Communications 2019.
 #'
 #' @export tcareg
 #'
-tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null_model = NULL, alternative_model = NULL, save_results = FALSE, fast_mode = TRUE, output = "TCA", sort_results = FALSE, parallel = FALSE, num_cores = NULL, log_file = "TCA.log", features_metadata = NULL, debug = FALSE, verbose = TRUE){
-
+tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null_model = NULL, alternative_model = NULL, save_results = FALSE, fast_mode = TRUE, output = "TCA", sort_results = FALSE, parallel = FALSE, num_cores = NULL, log_file = "TCA.log", features_metadata = NULL, debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
 
   flog.info("Starting tcareg...")
@@ -309,7 +308,7 @@ tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null
   y <- if (is.matrix(y)) y else as.matrix(y)
   C3 <- if (is.matrix(C3) | is.null(C3)) C3 else as.matrix(C3)
 
-  W <- tca.mdl[['W']]
+  W <- tca.mdl[["W"]]
   flog.info("Validating input...")
   tcareg.validate_input(X, W, y, C3, test, null_model, alternative_model, save_results, fast_mode, output, sort_results, parallel, num_cores, log_file, features_metadata, debug)
 
@@ -322,15 +321,15 @@ tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null
   deltas_hat <- tca.mdl[["deltas_hat"]]
   C1 <- tca.mdl[["C1"]]
   gammas_hat <- tca.mdl[["gammas_hat"]]
-  C3 <- if(!is.null(C3)) C3 else matrix(0, nrow=nrow(X), ncol=0)
-  null_model <- if (is.null(null_model)) NULL else sort(match(null_model,colnames(W)))
-  alternative_model <- sort(match(alternative_model,colnames(W)))
+  C3 <- if (!is.null(C3)) C3 else matrix(0, nrow = nrow(X), ncol = 0)
+  null_model <- if (is.null(null_model)) NULL else sort(match(null_model, colnames(W)))
+  alternative_model <- sort(match(alternative_model, colnames(W)))
   k <- ncol(W)
 
   flog.info("Running TCA regression...")
   res <- tcareg.fit(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, test, null_model, alternative_model, fast_mode, parallel, num_cores)
 
-  if (save_results){
+  if (save_results) {
     flog.info("Saving results...")
     save_association_results(res, output, test, fast_mode, alternative_model, colnames(X), colnames(W), colnames(C3), sort_results, features_metadata)
   }
@@ -379,10 +378,8 @@ tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null
 #' @references Rahmani E, Zaitlen N, Baran Y, Eng C, Hu D, Galanter J, Oh S, Burchard EG, Eskin E, Zou J, Halperin E. Correcting for cell-type heterogeneity in DNA methylation: a comprehensive evaluation. Nature Methods 2017.
 #'
 #' @export refactor
-refactor <- function(X, k, sparsity = 500, C = NULL, C.remove = FALSE, sd_threshold = 0.02, num_comp = NULL, rand_svd = FALSE, log_file = "TCA.log", debug = FALSE, verbose = TRUE){
-
-  return (refactor.run(X = X, k = k, sparsity = sparsity, C = C, C.remove = C.remove, sd_threshold = sd_threshold, num_comp = num_comp, rand_svd = rand_svd, log_file = log_file, debug = debug, logger_on = TRUE, verbose))
-
+refactor <- function(X, k, sparsity = 500, C = NULL, C.remove = FALSE, sd_threshold = 0.02, num_comp = NULL, rand_svd = FALSE, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
+  return(refactor.run(X = X, k = k, sparsity = sparsity, C = C, C.remove = C.remove, sd_threshold = sd_threshold, num_comp = num_comp, rand_svd = rand_svd, log_file = log_file, debug = debug, logger_on = TRUE, verbose))
 }
 
 
@@ -421,58 +418,61 @@ refactor <- function(X, k, sparsity = 500, C = NULL, C.remove = FALSE, sd_thresh
 #'
 #' @export test_data
 #'
-test_data <- function(n, m, k, p1, p2, tau, log_file = "TCA.log", verbose = TRUE){
-
+test_data <- function(n, m, k, p1, p2, tau, log_file = "TCA.log", verbose = TRUE) {
   start_logger(log_file, FALSE, verbose)
 
   flog.info("Starting test_data...")
 
-  mus <- Reshape(runif(m*k, min = 0, max = 1),m,k)
-  sigmas <- Reshape(runif(m*k, min = 0, max = 0.2),m,k)
-  W <- Reshape(runif(n*k, min = 0, max = 1),n,k)
-  W <- W/t(repmat(rowSums(W),k,1)) # normalize so the proportions are in the range [0,1] and sum up to 1 for each observation.
-  C1 <- Reshape(rnorm(n*p1, mean = 0, sd = 1), n, p1)
-  C2 <- Reshape(rnorm(n*p2, mean = 0, sd = 1), n, p2)
-  gammas <- Reshape(rnorm(m*p1*k, mean = 0, sd = 0.1), m, p1*k)
-  deltas <- Reshape(rnorm(m*p2, mean = 0, sd = 0.1), m, p2)
+  mus <- Reshape(runif(m * k, min = 0, max = 1), m, k)
+  sigmas <- Reshape(runif(m * k, min = 0, max = 0.2), m, k)
+  W <- Reshape(runif(n * k, min = 0, max = 1), n, k)
+  W <- W / t(repmat(rowSums(W), k, 1)) # normalize so the proportions are in the range [0,1] and sum up to 1 for each observation.
+  C1 <- Reshape(rnorm(n * p1, mean = 0, sd = 1), n, p1)
+  C2 <- Reshape(rnorm(n * p2, mean = 0, sd = 1), n, p2)
+  gammas <- Reshape(rnorm(m * p1 * k, mean = 0, sd = 0.1), m, p1 * k)
+  deltas <- Reshape(rnorm(m * p2, mean = 0, sd = 0.1), m, p2)
   Z <- list()
-  for (h in 1:k){
-    Z[[h]] <- matrix(0,n,m)
+  for (h in 1:k) {
+    Z[[h]] <- matrix(0, n, m)
   }
-  for (i in 1:n){
-    for (h in 1:k){
-      Z[[h]][i,] <- rnorm(m, mean = mus[,h], sd = sigmas[,h])
-      if (p1){
-        Z[[h]][i,] <- Z[[h]][i,] + C1[i,] %*% t(gammas[,((h-1)*p1+1):(p1*h)])
+  for (i in 1:n) {
+    for (h in 1:k) {
+      Z[[h]][i, ] <- rnorm(m, mean = mus[, h], sd = sigmas[, h])
+      if (p1) {
+        Z[[h]][i, ] <- Z[[h]][i, ] + C1[i, ] %*% t(gammas[, ((h - 1) * p1 + 1):(p1 * h)])
       }
     }
   }
-  X = matrix(0,n,m)
-  for (h in 1:k){
-    X <- X + Z[[h]]*t(repmat(W[,h],m,1))
+  X <- matrix(0, n, m)
+  for (h in 1:k) {
+    X <- X + Z[[h]] * t(repmat(W[, h], m, 1))
   }
-  if (p2){
+  if (p2) {
     X <- X + C2 %*% t(deltas)
   }
   # add i.i.d. component of variation
-  X <- X + Reshape(rnorm(n*m, mean = 0, sd = tau), n, m)
-  X<-t(X)
-  for (h in 1:k){
+  X <- X + Reshape(rnorm(n * m, mean = 0, sd = tau), n, m)
+  X <- t(X)
+  for (h in 1:k) {
     Z[[h]] <- t(Z[[h]])
     rownames(Z[[h]]) <- 1:m
     colnames(Z[[h]]) <- 1:n
   }
-  colnames(X) <- 1:n; rownames(X) <- 1:m
-  colnames(W) <- 1:k; rownames(W) <- 1:n
-  colnames(mus) <- colnames(W); colnames(sigmas) <- colnames(W)
-  rownames(mus) <- 1:m; rownames(sigmas) <- 1:m
-  if (p1){
+  colnames(X) <- 1:n
+  rownames(X) <- 1:m
+  colnames(W) <- 1:k
+  rownames(W) <- 1:n
+  colnames(mus) <- colnames(W)
+  colnames(sigmas) <- colnames(W)
+  rownames(mus) <- 1:m
+  rownames(sigmas) <- 1:m
+  if (p1) {
     rownames(C1) <- 1:n
     colnames(C1) <- 1:dim(C1)[2]
     rownames(gammas) <- 1:m
     colnames(gammas) <- 1:dim(gammas)[2]
   }
-  if (p2){
+  if (p2) {
     rownames(C2) <- 1:n
     colnames(C2) <- 1:dim(C2)[2]
     rownames(deltas) <- 1:m
@@ -480,5 +480,5 @@ test_data <- function(n, m, k, p1, p2, tau, log_file = "TCA.log", verbose = TRUE
   }
 
   flog.info("Finished test_data.")
-  return( list("X" = X, "Z" = Z, "W" = W, "mus" = mus, "sigmas" = sigmas, "C1" = C1, "C2" = C2, "gammas" = gammas, "deltas" = deltas) )
+  return(list("X" = X, "Z" = Z, "W" = W, "mus" = mus, "sigmas" = sigmas, "C1" = C1, "C2" = C2, "gammas" = gammas, "deltas" = deltas))
 }

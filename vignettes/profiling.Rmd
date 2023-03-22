@@ -1,0 +1,19 @@
+---
+title: "profiling"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{profiling}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, eval = F}
+library(devtools)
+```
