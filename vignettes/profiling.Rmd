@@ -29,25 +29,28 @@ load_all()
 
 # Simulate the data
 set.seed(1234)
-data <- test_data(400000, 20, 6, 1, 1, 0.01)
+data <- test_data(20, 100000, 6, 1, 1, 0.01)
 lapply(data, dim)
 
 set.seed(1234)
 # Run the data sequentially first.
-sequential <- profvis({
-  tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
-})
+# sequential <- profvis({
+#   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+# })
+# 
+# saveRDS(sequential, "./assets/sequential_n20_m1e5.rds")
+# use_build_ignore("./assets/sequential_n20_m1e5.rds")
+# use_git_ignore("./assets/sequential_n20_m1e5.rds")
 
-sequential
+sequential <- readRDS("./assets/sequential_n20_m1e5.rds")
 ```
 
-* The sequential run took 54s to be done
+* The sequential run took 7' to be done
 * We see that in `model_fit.R/tca_fit.R`, r is spending 
-  + High peak memory (1.4GB) and decent amount of time (6s) to call `tca.fit_means_vars`. 
-  This is the internal loop convergence of TCA. This is probablly what 
-  bottlenecked the loop in parallel mode because the high memory overhead.  
-  + High peak memory (20 GB) and a lot of time (30s) to call `data.frame()`.
-  before `lm()` to calculate the `gammas_hat_pvals.joint`.  
+  + High peak memory and decent amount of time to call `tca.fit_means_vars`. 
+  This is the internal loop convergence of TCA. This is probably what 
+  bottle necked the loop in parallel mode because the high memory overhead.  
+  + High peak memory and a lot of time to call `lm()` and subsequently `model.frame.default()`  
 * Let's try to replace the `data.frame()` call with a straight `cbind()` call to 
 create a X matrix. Then we can use `RcppEigen::fastLm()` to directly call 
 the data matrix and the vector y.  
@@ -73,6 +76,8 @@ summary(fastlm_model)$coefficients
 ```
 
 ```{r, eval = FALSE}
+load_all()
+tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 # para <- profvis({
 #   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
 #                  parallel = TRUE, num_cores = 3)
