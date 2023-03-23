@@ -69,27 +69,48 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
       clusterExport(cl, varlist = c("C1_", "W_norms", "X_tilde", "W", "k", "p2", "C2", "p1", "p1", "lm"), envir = environment())
     }
     res <- pblapply(1:m, function(j) {
-      df <- data.frame(y = X_tilde[, j], cbind(W / t(repmat(W_norms[, j], k, 1)), if (p2 > 0) C2 / t(repmat(W_norms[, j], p2, 1)) else C2, if (p1 > 0) C1_ / t(repmat(W_norms[, j], k * p1, 1)) else C1_))
-      mdl1.fit <- lm(y ~ ., data = df)
+      mdl1.fit <- RcppEigen::fastLm(
+        X = cbind(
+          "(Intercept)" = 1.0, # <----------- Remember the intercept
+          W / t(repmat(W_norms[, j], k, 1)),
+          if (p2 > 0) {
+            C2 / t(repmat(W_norms[, j], p2, 1))
+          } else {
+            C2
+          },
+          if (p1 > 0) {
+            C1_ / t(repmat(W_norms[, j], k * p1, 1))
+          } else {
+            C1_
+          }
+        ),
+        y = X_tilde[, j]
+      )
       mdl1.coef <- summary(mdl1.fit)$coefficients
-      mdl1.cov.names <- colnames(df)[colnames(df) != "y"]
-      deltas_gammas_hat_pvals <- sapply(mdl1.cov.names, function(x) {
-        if (x %in% rownames(mdl1.coef)) {
-          return(mdl1.coef[x, "Pr(>|t|)"])
-        } else {
-          return(NA)
-        }
-      })
+      # First row is always intercept. Sacrifice some code readability here
+      # Sacrifice some code readability here by using -1 instead of
+      ## mdl1.coef[`which(rownames(mdl1.coef) != "(Intercept)")`, "Pr(>|t|)"]
+      deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
+
       # deltas_gammas_hat_pvals <- summary(mdl1.fit)$coefficients[2:(1+k+p1*k+p2),4];
       gammas_hat_pvals.joint <- numeric(p1) + 1
       if (p1) {
-        C1_alt <- C1_ / t(repmat(W_norms[, j], k * p1, 1))
         for (d in 1:p1) {
-          C1_null <- C1_alt[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
-          df <- data.frame(y = X_tilde[, j], cbind(W / t(repmat(W_norms[, j], k, 1)), if (p2 > 0) C2 / t(repmat(W_norms[, j], p2, 1)) else C2, C1_null))
-          mdl0.fit <- lm(y ~ ., data = df)
-          anova.fit <- anova(mdl0.fit, mdl1.fit)
-          gammas_hat_pvals.joint[d] <- anova.fit$`Pr(>F)`[2]
+          mdl0.fit <- RcppEigen::fastLm(
+            X = cbind(
+              "(Intercept)" = 1.0, # <----------- Remember the intercept
+              W / t(repmat(W_norms[, j], k, 1)),
+              if (p2 > 0) {
+                C2 / t(repmat(W_norms[, j], p2, 1))
+              } else {
+                C2
+              },
+              #### Used to be `C1_null` and `C1_alt`. Removed assignment calls.
+              (C1_ / t(repmat(W_norms[, j], k * p1, 1)))[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
+            ),
+            y = X_tilde[, j]
+          )
+          gammas_hat_pvals.joint[d] <- fastLM_ftest(mdl0.fit, mdl1.fit)$`Pr(>F)`
         }
       }
       return(c(deltas_gammas_hat_pvals, gammas_hat_pvals.joint))

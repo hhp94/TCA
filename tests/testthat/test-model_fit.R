@@ -1,11 +1,35 @@
 test_that("tca generated the same result as the fixture created in 1.2.1", {
-  data <- readRDS(test_path("fixtures", "simdata.rds"))
-  fit_1_2_1_results <- readRDS(test_path("fixtures", "simdata_fit_1_2_1.rds"))
+  n_test <- 2 # out of maximum number of simulation time
+  data <- readRDS(test_path("fixtures", "exp1_simdata.rds"))[seq_len(n_test), ]
+  fit_df <- readRDS(test_path("fixtures", "exp1_simdata_fit_1_2_1.rds"))[seq_len(n_test), ]
+  
+  set.seed(unique(data$seed))
 
-  set.seed(1234)
-  tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+  fit_df$new_fit <- lapply(
+    data$df,
+    \(d) {
+      tca(
+        X = d$X,
+        W = d$W,
+        C1 = d$C1,
+        C2 = d$C2
+      )
+    }
+  )
 
-  expect_equal(rlang::hash(fit_1_2_1_results), rlang::hash(tca.mdl))
+  compare_fit <- function(o, n) {
+    all(sapply(names(o), \(x) {
+      all(near(o[[x]], n[[x]]))
+    }))
+  }
+
+  fit_df$results <- purrr::map2_lgl(
+    fit_df$fit_1_2_1,
+    fit_df$new_fit,
+    compare_fit
+  )
+  
+  expect_true(all(fit_df$results))
 })
 
 test_that("Verify that p-values are not returned for gamma and delta of constrain_mu == TRUE", {

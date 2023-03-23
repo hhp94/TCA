@@ -31,3 +31,9 @@ run_ewas <- function(X, W, tca.mdl, yfile, test, fast_mode = FALSE) {
   }
   return(pvals)
 }
+
+near <- function (x, y, tol = .Machine$double.eps ^ 0.5)
+{
+  # FROM DPLYR PACKAGE
+  abs(x - y) < tol
+} 

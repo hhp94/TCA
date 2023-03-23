@@ -24,12 +24,15 @@ Imports:
     quadprog,
     Matrix,
     rlang,
-    RcppEigen
+    RcppEigen,
+    furrr,
+    purrr
 Depends: R (>= 3.5.0)
 Suggests: 
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    tibble
 URL: https://www.nature.com/articles/s41467-019-11052-9
 BugReports: https://github.com/cozygene/TCA/issues
 VignetteBuilder: knitr

@@ -21,10 +21,16 @@ couldn't converge after 12 hours and hit out of memory error with 120GB of RAM.
 * This fork is created to profile the performance of TCA and see if there are 
 bottlenecks we can resolve.  
 
+# Changelog
+* Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`
+* Added `fastLM_ftest()` to `./R/utils.R` to calculate partial f-tests.  
+
+
 ```{r setup, eval = FALSE}
 library(profvis) # Profiling tool
 library(devtools)
 library(tictoc)
+near <- dplyr::near
 load_all()
 ```
 
@@ -246,6 +252,7 @@ anova.lm <- function(object, ...) {
 * Warning, this might be unsafe
 
 ## Change 1
+* Replace the `data.frame()` and `lm()` call with `RcppEigen::fastLm`
 ```{r, eval = F}
 df <-
   data.frame(y = X_tilde[, j], cbind(
@@ -278,7 +285,7 @@ deltas_gammas_hat_pvals <-
 # Remove call to data.frame() and lm()
 mdl1.fit <- RcppEigen::fastLm(
   X = cbind(
-    "(Intercept)" = 1,
+    "(Intercept)" = 1.0, # <----------- Remember the intercept
     W / t(repmat(W_norms[, j], k, 1)),
     if (p2 > 0) {
       C2 / t(repmat(W_norms[, j], p2, 1))
@@ -293,11 +300,15 @@ mdl1.fit <- RcppEigen::fastLm(
   ),
   y = X_tilde[, j]
 )
-mdl1.coef <- summary_fastLm(mdl1.fit)$coefficients
-deltas_gammas_hat_pvals <- mdl1.coef[which(rownames(mdl1.coef) != "(Intercept)"), "Pr(>|t|)"]
+mdl1.coef <- summary(mdl1.fit)$coefficients
+# First row is always intercept. Sacrifice some code readability here
+# Sacrifice some code readability here by using -1 instead of
+## `which(rownames(mdl1.coef) != "(Intercept)")`
+deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
 ```
 
 ## Change 2
+Sample with change 1
 ```{r, eval = F}
 # Before
 C1_alt <- C1_ / t(repmat(W_norms[, j], k * p1, 1))
@@ -317,23 +328,65 @@ for (d in 1:p1) {
 
 ```{r, eval = F}
 # After
-C1_alt <- C1_ / t(repmat(W_norms[, j], k * p1, 1))
 for (d in 1:p1) {
-  C1_null <- C1_alt[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
-  df <-
-    data.frame(y = X_tilde[, j], cbind(W / t(repmat(W_norms[, j], k, 1)), if (p2 > 0) {
-      C2 / t(repmat(W_norms[, j], p2, 1))
-    } else {
-      C2
-    }, C1_null))
-  mdl0.fit <- lm(y ~ ., data = df)
-  anova.fit <- anova(mdl0.fit, mdl1.fit)
-  gammas_hat_pvals.joint[d] <- anova.fit$`Pr(>F)`[2]
+  mdl0.fit <- RcppEigen::fastLm(
+    X = cbind(
+      "(Intercept)" = 1.0, # <----------- Remember the intercept
+      W / t(repmat(W_norms[, j], k, 1)),
+      if (p2 > 0) {
+        C2 / t(repmat(W_norms[, j], p2, 1))
+      } else {
+        C2
+      },
+      #### Used to be `C1_null` and `C1_alt`. Removed assignment calls.
+      (C1_ / t(repmat(W_norms[, j], k * p1, 1)))[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
+    ),
+    y = X_tilde[, j]
+  )
+  gammas_hat_pvals.joint[d] <- fastLM_ftest(mdl0.fit, mdl1.fit)$`Pr(>F)`
 }
 ```
 
 # Test
-## Change 1
+## Did results changed?
+```{r}
+n_test <- 2
+data <- readRDS(test_path("fixtures", "exp1_simdata.rds"))
+fit_1_2_1_results <- readRDS(test_path("fixtures", "exp1_simdata_fit_1_2_1.rds"))
+fit_1_2_1_results[seq_len(n_test), ]
+set.seed(1234)
+
+fit_1_2_1_results$new_fit <- lapply(
+  data$df,
+  \(d) {
+    tca(
+      X = d$X,
+      W = d$W,
+      C1 = d$C1,
+      C2 = d$C2
+    )
+  }
+)
+
+compare_fit <- function(o, n) {
+  all(sapply(names(o), \(x) {
+    all(near(o[[x]], n[[x]]))
+  }))
+}
+
+fit_1_2_1_results$results <- purrr::map2_lgl(
+  fit_1_2_1_results$fit_1_2_1,
+  fit_1_2_1_results$new_fit,
+  compare_fit
+)
+
+
+plan(sequential)
+# waldo::compare(fit_1_2_1_results$deltas_hat_pvals, tca.mdl$deltas_hat_pvals)
+```
+
+## Change 1 and 2
+1 and 2 has to be tested concurrently
 ```{r}
 data <- test_data(20, 10000, 6, 1, 1, 0.01)
 tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
@@ -360,13 +413,10 @@ mdl1.fit.1 <- RcppEigen::fastLm(
   y = y
 )
 
-mdl1.coef.1 <- summary_fastLm(mdl1.fit.1)$coefficients
-deltas_gammas_hat_pvals.1 <- mdl1.coef.1[which(rownames(mdl1.coef.1) != "(Intercept)"), "Pr(>|t|)"]
-
+mdl1.coef.1 <- summary(mdl1.fit.1)$coefficients
+deltas_gammas_hat_pvals.1 <- mdl1.coef.1[-1, "Pr(>|t|)"]
 stopifnot(all(dplyr::near(deltas_gammas_hat_pvals, deltas_gammas_hat_pvals.1)))
 ```
-
-## Change 2
 
 # Scrap
 ```{r}
@@ -392,9 +442,6 @@ fastLm.mdl1.fit <- RcppEigen::fastLm(
 )
 ```
 
-* Added `fastLM_ftest()` to `./R/utils.R` to calculate the call to partial 
-f-tests.  
-
 ```{r}
 anova_obj <- anova(lm.mdl0.fit, lm.mdl1.fit)
 anova_obj$F
@@ -410,57 +457,3 @@ fastLM_ftest(fastLm.mdl0.fit, fastLm.mdl1.fit)
 summary(fastLm.mdl0.fit)
 mdl1.fit <- fastLm.mdl0.fit
 ```
-
-```{r}
-summary(mdl1.fit)
-mdl1.coef <- summary(mdl1.fit)$coefficients
-deltas_gammas_hat_pvals <- mdl1.coef[which(rownames(mdl1.coef) != "(Intercept)"), "Pr(>|t|)"]
-deltas_gammas_hat_pvals
-coef(mdl1.fit)
-mdl1.cov.names <- colnames(df)[colnames(df) != "y"]
-deltas_gammas_hat_pvals <-
-  sapply(mdl1.cov.names, function(x) {
-    if (x %in% rownames(mdl1.coef)) {
-      return(mdl1.coef[x, "Pr(>|t|)"])
-    } else {
-      return(NA)
-    }
-  })
-
-
-deltas_gammas_hat_pvals
-mdl1.coef[, 4]
-```
-
-```{r, eval = FALSE}
-df <-
-  data.frame(y = X_tilde[, j], cbind(
-    W / t(repmat(W_norms[, j], k, 1)),
-    if (p2 > 0) {
-      C2 / t(repmat(W_norms[, j], p2, 1))
-    } else {
-      C2
-    },
-    if (p1 > 0) {
-      C1_ / t(repmat(W_norms[, j], k * p1, 1))
-    } else {
-      C1_
-    }
-  ))
-
-
-load_all()
-tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
-# para <- profvis({
-#   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
-#                  parallel = TRUE, num_cores = 3)
-# })
-
-# insert into model_fit.R/tca.fit.R
-message("saving profile")
-qs::qsave(
-  list(t1 = t1, t2 = t2, p2 = p2, C2 = C2, W_norms = W_norms),
-  "./data-raw/tca_fit_profile.qs"
-)
-```
-
