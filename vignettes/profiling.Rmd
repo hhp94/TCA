@@ -79,10 +79,14 @@ summary(fastlm_model)$coefficients
 # })
 
 df <- data.frame(
-  y = X_tilde[, j], 
+  y = X_tilde[, j],
   cbind(
-    W / t(repmat(W_norms[, j], k, 1)), 
-    if (p2 > 0) {C2 / t(repmat(W_norms[, j], p2, 1))} else {C2}, 
+    W / t(repmat(W_norms[, j], k, 1)),
+    if (p2 > 0) {
+      C2 / t(repmat(W_norms[, j], p2, 1))
+    } else {
+      C2
+    },
     C1_null
   )
 )
@@ -107,13 +111,15 @@ cbind(1, mtcars[, "mpg", drop = FALSE])
 lm.fit(cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])), mtcars[, "vs"])
 Rfast::lmfit()
 RcppEigen::fastLm(
-  X = cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])), 
+  X = cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])),
   y = mtcars[, "vs"]
-  ) |> summary()
+) |> summary()
 
 # insert into model_fit.R/tca.fit.R
 message("saving profile")
-qs::qsave(list(t1 = t1, t2 = t2, p2 = p2, C2 = C2, W_norms = W_norms),
-          "./data-raw/tca_fit_profile.qs")
+qs::qsave(
+  list(t1 = t1, t2 = t2, p2 = p2, C2 = C2, W_norms = W_norms),
+  "./data-raw/tca_fit_profile.qs"
+)
 ```
 

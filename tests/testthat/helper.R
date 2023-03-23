@@ -1,5 +1,7 @@
 # Wrapper around the assets folder for matlab data.
-assets_p <- function(...) { test_path("assets", ...) }
+assets_p <- function(...) {
+  test_path("assets", ...)
+}
 
 # Wrapper for running ewas used in test-TCA.R
 run_ewas <- function(X, W, tca.mdl, yfile, test, fast_mode = FALSE) {

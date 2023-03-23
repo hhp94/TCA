@@ -1,4 +1,4 @@
-# # Simulated data from matlab was simulated with using n = 200; m = 100; 
+# # Simulated data from matlab was simulated with using n = 200; m = 100;
 # k = 3; tau = 0.01; p1 = 2; p2 = 2;
 # test_that("Results of tca", {
 #   data <- test_data(50, 100, 3, 2, 2, 0.01, log_file = NULL)
@@ -7,7 +7,8 @@
 
 test_that("test/testthat/helper.R works", {
   expect_true(file.exists(assets_p("X.txt")))
-  expect_true(file.exists(assets_p("ewas", "TCA_methylation_exp2_sim1_k_6_n_500_data.txt")))
+  expect_true(file.exists(assets_p("ewas", "exp2_sim1_k6_n500_data.txt
+")))
 })
 
 test_that("Comparison with the results given by the matlab version", {
@@ -115,10 +116,11 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   skip_on_cran()
 
   # load data
-  X <- as.matrix(read.table(assets_p("ewas", "TCA_methylation_exp2_sim1_k_6_n_500_data.txt"), header = FALSE, sep = ","))
+  X <- as.matrix(read.table(assets_p("ewas", "exp2_sim1_k6_n500_data.txt
+"), header = FALSE, sep = ","))
   colnames(X) <- 1:ncol(X)
   rownames(X) <- 1:nrow(X)
-  W <- as.matrix(read.table(assets_p("ewas", "TCA_methylation_exp2_sim1_k_6_n_500_W.txt"), header = FALSE, sep = ","))
+  W <- as.matrix(read.table(assets_p("ewas", "exp2_sim1_k6_n500_W.txt"), header = FALSE, sep = ","))
   colnames(W) <- 1:ncol(W)
   rownames(W) <- 1:nrow(W)
   m <- ncol(X)
@@ -129,53 +131,53 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   # (1) joint test
   message("(1) joint test")
   # power
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_joint_effect_size_10_W_noise_level_0.txt", test = "joint", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "joint", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.5)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_joint_effect_size_10_W_noise_level_0.txt", test = "joint", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "joint", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.5)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "joint", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "joint", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m < 0.05)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "joint", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "joint", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m < 0.05)
 
   # (2) marginal test
   message("(2) marginal test")
   # power
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_marginal_ct_1_effect_size_5_W_noise_level_0.txt", test = "marginal", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_1_effs_5_W_noise_0.txt", test = "marginal", fast_mode = FALSE)
   expect_true(sum(pvals[, 1] < 0.05 / m) / m > 0.9)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_marginal_ct_1_effect_size_5_W_noise_level_0.txt", test = "marginal", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_1_effs_5_W_noise_0.txt", test = "marginal", fast_mode = TRUE)
   expect_true(sum(pvals[, 1] < 0.05 / m) / m > 0.9)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "marginal", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "marginal", fast_mode = FALSE)
   for (h in 1:k) {
     expect_true(sum(pvals[, h] < 0.05) / m < 0.1)
   }
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "marginal", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "marginal", fast_mode = TRUE)
   for (h in 1:k) {
     expect_true(sum(pvals[, h] < 0.05) / m < 0.1)
   }
 
   # (3) conditional marginal test
   message("(3) conditional marginal test")
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_marginal_ct_1_effect_size_5_W_noise_level_0.txt", test = "marginal_conditional", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_1_effs_5_W_noise_0.txt", test = "marginal_conditional", fast_mode = FALSE)
   expect_true(sum(pvals[, 1] < 0.05) / m > 0.9)
   for (h in 2:k) {
     expect_false(sum(pvals[, h] < 0.05) / m > 0.1)
   }
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_marginal_ct_1_effect_size_5_W_noise_level_0.txt", test = "marginal_conditional", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_1_effs_5_W_noise_0.txt", test = "marginal_conditional", fast_mode = TRUE)
   expect_true(sum(pvals[, 1] < 0.05) / m > 0.9)
   for (h in 2:k) {
     expect_false(sum(pvals[, h] < 0.05) / m > 0.1)
   }
 
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_marginal_ct_3_effect_size_10_W_noise_level_0.txt", test = "marginal_conditional", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_3_effs_10_W_noise_0.txt", test = "marginal_conditional", fast_mode = FALSE)
   l <- 3
   expect_true(sum(pvals[, l] < 0.05) / m > 0.1)
   for (h in setdiff(1:k, l)) {
     expect_false(sum(pvals[, h] < 0.05) / m > 0.1)
   }
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_marginal_ct_3_effect_size_10_W_noise_level_0.txt", test = "marginal_conditional", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_3_effs_10_W_noise_0.txt", test = "marginal_conditional", fast_mode = TRUE)
   l <- 3
   expect_true(sum(pvals[, l] < 0.05) / m > 0.1)
   for (h in setdiff(1:k, l)) {
@@ -185,27 +187,27 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   # (4) joint test - single beta
   message("(4) joint test - single beta")
   # power
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_joint_single_beta_effect_size_10_W_noise_level_0.txt", test = "single_effect", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_single_beta_effs_10_W_noise_0.txt", test = "single_effect", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.8)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_joint_single_beta_effect_size_10_W_noise_level_0.txt", test = "single_effect", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_single_beta_effs_10_W_noise_0.txt", test = "single_effect", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.8)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "single_effect", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "single_effect", fast_mode = FALSE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.05)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "single_effect", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "single_effect", fast_mode = TRUE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.05)
 
   # (5) custom test
   message("(5) custom test")
   # power
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_joint_effect_size_10_W_noise_level_0.txt", test = "custom", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "custom", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.4)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_joint_effect_size_10_W_noise_level_0.txt", test = "custom", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "custom", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.4)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "custom", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "custom", fast_mode = FALSE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.1)
-  pvals <- run_ewas(X, W, tca.mdl, "TCA_methylation_exp2_sim1_k_6_n_500_Y_fps_effect_size_1_W_noise_level_0.txt", test = "custom", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "custom", fast_mode = TRUE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.1)
 })
 

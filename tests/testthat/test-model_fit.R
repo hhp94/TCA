@@ -1,10 +1,10 @@
 test_that("tca generated the same result as the fixture created in 1.2.1", {
   data <- readRDS(test_path("fixtures", "simdata.rds"))
   fit_1_2_1_results <- readRDS(test_path("fixtures", "simdata_fit_1_2_1.rds"))
-  
+
   set.seed(1234)
   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
-  
+
   expect_equal(rlang::hash(fit_1_2_1_results), rlang::hash(tca.mdl))
 })
 

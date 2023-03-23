@@ -22,9 +22,8 @@ test_that("generate test data", {
   expect_true("matrix" %in% class(Z_hat[[1]]))
   expect_true("matrix" %in% class(Z_hat[[2]]))
   expect_true("matrix" %in% class(Z_hat[[3]]))
-  
+
   expect_type(Z_hat[[1]], "double")
   expect_type(Z_hat[[2]], "double")
   expect_type(Z_hat[[3]], "double")
 })
-
