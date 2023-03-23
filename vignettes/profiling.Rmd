@@ -26,7 +26,9 @@ library(profvis) # Profiling tool
 library(devtools)
 library(tictoc)
 load_all()
+```
 
+```{r setup, eval = FALSE}
 # Simulate the data
 set.seed(1234)
 data <- test_data(20, 100000, 6, 1, 1, 0.01)
@@ -37,12 +39,15 @@ set.seed(1234)
 # sequential <- profvis({
 #   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 # })
-# 
+#
 # saveRDS(sequential, "./assets/sequential_n20_m1e5.rds")
 # use_build_ignore("./assets/sequential_n20_m1e5.rds")
 # use_git_ignore("./assets/sequential_n20_m1e5.rds")
+```
 
+```{r setup, eval = FALSE}
 sequential <- readRDS("./assets/sequential_n20_m1e5.rds")
+sequential
 ```
 
 * The sequential run took 7' to be done
@@ -50,75 +55,406 @@ sequential <- readRDS("./assets/sequential_n20_m1e5.rds")
   + High peak memory and decent amount of time to call `tca.fit_means_vars`. 
   This is the internal loop convergence of TCA. This is probably what 
   bottle necked the loop in parallel mode because the high memory overhead.  
-  + High peak memory and a lot of time to call `lm()` and subsequently `model.frame.default()`  
+  + High peak memory and a lot of time to call `lm()` and subsequently 
+  `model.frame.default()`  
+  + The `anova.lm()` call to compare the model with a null model is also taking
+  a significant amount time. This should be unnecessary since the model it is
+  comparing to is a null model, the F statistics is already calculated in the 
+  `summary.lm()` object  
 * Let's try to replace the `data.frame()` call with a straight `cbind()` call to 
 create a X matrix. Then we can use `RcppEigen::fastLm()` to directly call 
 the data matrix and the vector y.  
-* This is potentially a dangerous trade-off between speed and safety. But 
-since NA is already expected to be taken care of by user, we should be safe to 
-make this trade off. Other issues such as full rank matrix should still cause 
-errors. We can create a test case for this.  
+  + This is potentially a dangerous trade-off between speed and safety. But 
+  since NA is already expected to be taken care of by user, we should be safe to 
+  make this trade off. Other issues such as full rank matrix should still cause 
+  errors. We can create a test case for this.  
+  + Have to implement an `anova()` method for `RcppEigen::fastLm()`.  
 
-# Check lm functions
-```{r, eval = FALSE}
-lm_model <- lm(cyl ~ mpg + hp + disp, data = mtcars)
-fastlm_model <- RcppEigen::fastLm(
-  cbind(1, as.matrix(mtcars[, which(names(mtcars) %in% c("mpg", "hp", "disp"))])),
-  mtcars[, "cyl"]
-)
-```
-
-* Results are almost identical
+# anova.lm
+## stat.anova
 ```{r}
-summary(lm_model) |> names()
-summary(lm_model)$coefficients
-summary(fastlm_model)$coefficients
+stat.anova <-
+  function(table, test = c("Rao", "LRT", "Chisq", "F", "Cp"), scale, df.scale, n) {
+    test <- match.arg(test)
+    dev.col <- match("Deviance", colnames(table))
+    if (test == "Rao") dev.col <- match("Rao", colnames(table))
+    if (is.na(dev.col)) dev.col <- match("Sum of Sq", colnames(table))
+    switch(test,
+      "Rao" = ,
+      "LRT" = ,
+      "Chisq" = {
+        dfs <- table[, "Df"]
+        vals <- table[, dev.col] / scale * sign(dfs)
+        vals[dfs %in% 0] <- NA
+        vals[!is.na(vals) & vals < 0] <- NA # rather than p = 0
+        cbind(table,
+          "Pr(>Chi)" = pchisq(vals, abs(dfs), lower.tail = FALSE)
+        )
+      },
+      "F" = {
+        dfs <- table[, "Df"]
+        Fvalue <- (table[, dev.col] / dfs) / scale
+        Fvalue[dfs %in% 0] <- NA
+        Fvalue[!is.na(Fvalue) & Fvalue < 0] <- NA # rather than p = 0
+        cbind(table,
+          F = Fvalue,
+          "Pr(>F)" = pf(Fvalue, abs(dfs), df.scale, lower.tail = FALSE)
+        )
+      },
+      "Cp" = { # depends on the type of object.
+        if ("RSS" %in% names(table)) { # an lm object
+          cbind(table, Cp = table[, "RSS"] +
+            2 * scale * (n - table[, "Res.Df"]))
+        } else { # a glm object
+          cbind(table, Cp = table[, "Resid. Dev"] +
+            2 * scale * (n - table[, "Resid. Df"]))
+        }
+      }
+    )
+  }
 ```
 
-```{r, eval = FALSE}
-load_all()
-tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
-# para <- profvis({
-#   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
-#                  parallel = TRUE, num_cores = 3)
-# })
+## anova.lmlist
+```{r}
+anova.lmlist <- function(object, ..., scale = 0, test = "F") {
+  objects <- list(object, ...)
+  responses <- as.character(lapply(
+    objects,
+    function(x) deparse(x$terms[[2L]])
+  ))
+  sameresp <- responses == responses[1L]
+  if (!all(sameresp)) {
+    objects <- objects[sameresp]
+    warning(
+      gettextf(
+        "models with response %s removed because response differs from model 1",
+        sQuote(deparse(responses[!sameresp]))
+      ),
+      domain = NA
+    )
+  }
 
-df <- data.frame(
-  y = X_tilde[, j],
-  cbind(
+  ns <- sapply(objects, function(x) length(x$residuals))
+  if (any(ns != ns[1L])) {
+    stop("models were not all fitted to the same size of dataset")
+  }
+
+  ## calculate the number of models
+  nmodels <- length(objects)
+  if (nmodels == 1) {
+    return(anova.lm(object))
+  }
+
+  ## extract statistics
+
+  resdf <- as.numeric(lapply(objects, df.residual))
+  resdev <- as.numeric(lapply(objects, deviance))
+
+  ## construct table and title
+
+  table <- data.frame(
+    resdf, resdev, c(NA, -diff(resdf)),
+    c(NA, -diff(resdev))
+  )
+  variables <- lapply(objects, function(x) {
+    paste(deparse(formula(x)), collapse = "\n")
+  })
+  dimnames(table) <- list(
+    1L:nmodels,
+    c("Res.Df", "RSS", "Df", "Sum of Sq")
+  )
+
+  title <- "Analysis of Variance Table\n"
+  topnote <- paste0("Model ", format(1L:nmodels), ": ", variables,
+    collapse = "\n"
+  )
+
+  ## calculate test statistic if needed
+
+  if (!is.null(test)) {
+    bigmodel <- order(resdf)[1L]
+    scale <- if (scale > 0) scale else resdev[bigmodel] / resdf[bigmodel]
+    table <- stat.anova(
+      table = table, test = test,
+      scale = scale,
+      df.scale = resdf[bigmodel],
+      n = length(objects[[bigmodel]]$residuals)
+    )
+  }
+  structure(table,
+    heading = c(title, topnote),
+    class = c("anova", "data.frame")
+  )
+}
+```
+
+## anova.lm
+```{r}
+anova.lm <- function(object, ...) {
+  ## Do not copy this: anova.lmlist is not an exported object.
+  ## See anova.glm for further comments.
+  if (length(list(object, ...)) > 1L) {
+    return(anova.lmlist(object, ...))
+  }
+
+  if (!inherits(object, "lm")) {
+    warning("calling anova.lm(<fake-lm-object>) ...")
+  }
+  w <- object$weights
+  ssr <- sum(if (is.null(w)) object$residuals^2 else w * object$residuals^2)
+  mss <- sum(if (is.null(w)) object$fitted.values^2 else w * object$fitted.values^2)
+  if (ssr < 1e-10 * mss) {
+    warning("ANOVA F-tests on an essentially perfect fit are unreliable")
+  }
+  dfr <- df.residual(object)
+  p <- object$rank
+  if (p > 0L) {
+    p1 <- 1L:p
+    comp <- object$effects[p1]
+    asgn <- object$assign[qr.lm(object)$pivot][p1]
+    nmeffects <- c("(Intercept)", attr(object$terms, "term.labels"))
+    tlabels <- nmeffects[1 + unique(asgn)]
+    ss <- c(vapply(split(comp^2, asgn), sum, 1.0), ssr)
+    df <- c(lengths(split(asgn, asgn)), dfr)
+  } else {
+    ss <- ssr
+    df <- dfr
+    tlabels <- character()
+  }
+  ms <- ss / df
+  f <- ms / (ssr / dfr)
+  P <- pf(f, df, dfr, lower.tail = FALSE)
+  table <- data.frame(df, ss, ms, f, P)
+  table[length(P), 4:5] <- NA
+  dimnames(table) <- list(
+    c(tlabels, "Residuals"),
+    c("Df", "Sum Sq", "Mean Sq", "F value", "Pr(>F)")
+  )
+  if (attr(object$terms, "intercept")) table <- table[-1, ]
+  structure(table,
+    heading = c(
+      "Analysis of Variance Table\n",
+      paste("Response:", deparse(formula(object)[[2L]]))
+    ),
+    class = c("anova", "data.frame")
+  ) # was "tabular"
+}
+```
+
+
+# Replacing codes
+* Warning, this might be unsafe
+
+## Change 1
+```{r, eval = F}
+df <-
+  data.frame(y = X_tilde[, j], cbind(
     W / t(repmat(W_norms[, j], k, 1)),
     if (p2 > 0) {
       C2 / t(repmat(W_norms[, j], p2, 1))
     } else {
       C2
     },
-    C1_null
-  )
+    if (p1 > 0) {
+      C1_ / t(repmat(W_norms[, j], k * p1, 1))
+    } else {
+      C1_
+    }
+  ))
+mdl1.fit <- lm(y ~ ., data = df)
+mdl1.coef <- summary(mdl1.fit)$coefficients
+mdl1.cov.names <- colnames(df)[colnames(df) != "y"]
+deltas_gammas_hat_pvals <-
+  sapply(mdl1.cov.names, function(x) {
+    if (x %in% rownames(mdl1.coef)) {
+      return(mdl1.coef[x, "Pr(>|t|)"])
+    } else {
+      return(NA)
+    }
+  })
+```
+
+```{r, eval = F}
+# Remove call to data.frame() and lm()
+mdl1.fit <- RcppEigen::fastLm(
+  X = cbind(
+    "(Intercept)" = 1,
+    W / t(repmat(W_norms[, j], k, 1)),
+    if (p2 > 0) {
+      C2 / t(repmat(W_norms[, j], p2, 1))
+    } else {
+      C2
+    },
+    if (p1 > 0) {
+      C1_ / t(repmat(W_norms[, j], k * p1, 1))
+    } else {
+      C1_
+    }
+  ),
+  y = X_tilde[, j]
+)
+mdl1.coef <- summary_fastLm(mdl1.fit)$coefficients
+deltas_gammas_hat_pvals <- mdl1.coef[which(rownames(mdl1.coef) != "(Intercept)"), "Pr(>|t|)"]
+```
+
+## Change 2
+```{r, eval = F}
+# Before
+C1_alt <- C1_ / t(repmat(W_norms[, j], k * p1, 1))
+for (d in 1:p1) {
+  C1_null <- C1_alt[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
+  df <-
+    data.frame(y = X_tilde[, j], cbind(W / t(repmat(W_norms[, j], k, 1)), if (p2 > 0) {
+      C2 / t(repmat(W_norms[, j], p2, 1))
+    } else {
+      C2
+    }, C1_null))
+  mdl0.fit <- lm(y ~ ., data = df)
+  anova.fit <- anova(mdl0.fit, mdl1.fit)
+  gammas_hat_pvals.joint[d] <- anova.fit$`Pr(>F)`[2]
+}
+```
+
+```{r, eval = F}
+# After
+C1_alt <- C1_ / t(repmat(W_norms[, j], k * p1, 1))
+for (d in 1:p1) {
+  C1_null <- C1_alt[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
+  df <-
+    data.frame(y = X_tilde[, j], cbind(W / t(repmat(W_norms[, j], k, 1)), if (p2 > 0) {
+      C2 / t(repmat(W_norms[, j], p2, 1))
+    } else {
+      C2
+    }, C1_null))
+  mdl0.fit <- lm(y ~ ., data = df)
+  anova.fit <- anova(mdl0.fit, mdl1.fit)
+  gammas_hat_pvals.joint[d] <- anova.fit$`Pr(>F)`[2]
+}
+```
+
+# Test
+## Change 1
+```{r}
+data <- test_data(20, 10000, 6, 1, 1, 0.01)
+tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+df <- readRDS("./assets/change_1.rds")
+X <- cbind("(Intercept)" = 1, df[, which(names(df) != "y")])
+y <- df$y
+
+mdl1.fit <- lm(y ~ ., data = df)
+mdl1.coef <- summary(mdl1.fit)$coefficients
+mdl1.cov.names <- colnames(df)[colnames(df) != "y"]
+deltas_gammas_hat_pvals <-
+  sapply(mdl1.cov.names, function(x) {
+    if (x %in% rownames(mdl1.coef)) {
+      return(mdl1.coef[x, "Pr(>|t|)"])
+    } else {
+      return(NA)
+    }
+  })
+
+deltas_gammas_hat_pvals
+
+mdl1.fit.1 <- RcppEigen::fastLm(
+  X = X,
+  y = y
 )
 
-tca_fit_debug <- qs::qread("./data-raw/tca_fit_profile.qs")
-tca_fit_debug$t1
+mdl1.coef.1 <- summary_fastLm(mdl1.fit.1)$coefficients
+deltas_gammas_hat_pvals.1 <- mdl1.coef.1[which(rownames(mdl1.coef.1) != "(Intercept)"), "Pr(>|t|)"]
 
-profvis({
-  test <- cbind(tca_fit_debug$t1, tca_fit_debug$t2)
-  df <- data.frame(test)
-})
+stopifnot(all(dplyr::near(deltas_gammas_hat_pvals, deltas_gammas_hat_pvals.1)))
+```
 
-test <- lm(vs ~ mpg, mtcars)
-test$model
+## Change 2
 
-model.matrix(vs ~ mpg, data = mtcars)
-mtcars[, "mpg", drop = FALSE]
-mtcars[, "vs"]
+# Scrap
+```{r}
+rand_y <- rnorm(nrow(mtcars))
+df <- cbind(y = rand_y, mtcars)
 
-cbind(1, mtcars[, "mpg", drop = FALSE])
+## lm
+lm.mdl0.fit <- lm(y ~ mpg + cyl + disp, data = df)
+lm.mdl1.fit <- lm(y ~ ., data = df)
 
-lm.fit(cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])), mtcars[, "vs"])
-Rfast::lmfit()
-RcppEigen::fastLm(
-  X = cbind(1, as.matrix(mtcars[, "mpg", drop = FALSE])),
-  y = mtcars[, "vs"]
-) |> summary()
+## alternatives
+X <- cbind("(Intercept)" = 1, as.matrix(mtcars))
+X_null <- cbind("(Intercept)" = 1, as.matrix(mtcars)[, c("mpg", "cyl", "disp")])
+
+fastLm.mdl0.fit <- RcppEigen::fastLm(
+  X = X_null,
+  y = rand_y
+)
+
+fastLm.mdl1.fit <- RcppEigen::fastLm(
+  X = X,
+  y = rand_y
+)
+```
+
+* Added `fastLM_ftest()` to `./R/utils.R` to calculate the call to partial 
+f-tests.  
+
+```{r}
+anova_obj <- anova(lm.mdl0.fit, lm.mdl1.fit)
+anova_obj$F
+anova_obj$`Pr(>F)`
+
+microbenchmark::microbenchmark(
+  anova(lm.mdl0.fit, lm.mdl1.fit),
+  fastLM_ftest(lm.mdl0.fit, lm.mdl1.fit),
+  times = 1000
+)
+
+fastLM_ftest(fastLm.mdl0.fit, fastLm.mdl1.fit)
+summary(fastLm.mdl0.fit)
+mdl1.fit <- fastLm.mdl0.fit
+```
+
+```{r}
+summary(mdl1.fit)
+mdl1.coef <- summary(mdl1.fit)$coefficients
+deltas_gammas_hat_pvals <- mdl1.coef[which(rownames(mdl1.coef) != "(Intercept)"), "Pr(>|t|)"]
+deltas_gammas_hat_pvals
+coef(mdl1.fit)
+mdl1.cov.names <- colnames(df)[colnames(df) != "y"]
+deltas_gammas_hat_pvals <-
+  sapply(mdl1.cov.names, function(x) {
+    if (x %in% rownames(mdl1.coef)) {
+      return(mdl1.coef[x, "Pr(>|t|)"])
+    } else {
+      return(NA)
+    }
+  })
+
+
+deltas_gammas_hat_pvals
+mdl1.coef[, 4]
+```
+
+```{r, eval = FALSE}
+df <-
+  data.frame(y = X_tilde[, j], cbind(
+    W / t(repmat(W_norms[, j], k, 1)),
+    if (p2 > 0) {
+      C2 / t(repmat(W_norms[, j], p2, 1))
+    } else {
+      C2
+    },
+    if (p1 > 0) {
+      C1_ / t(repmat(W_norms[, j], k * p1, 1))
+    } else {
+      C1_
+    }
+  ))
+
+
+load_all()
+tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+# para <- profvis({
+#   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+#                  parallel = TRUE, num_cores = 3)
+# })
 
 # insert into model_fit.R/tca.fit.R
 message("saving profile")

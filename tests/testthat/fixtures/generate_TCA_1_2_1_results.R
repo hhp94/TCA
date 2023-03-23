@@ -2,7 +2,8 @@
 
 set.seed(1234)
 warning("This shouldn't run in build test")
-data <- test_data(5000, 50, 3, 2, 2, 0.01)
+data <- test_data(50, 5000, 3, 2, 2, 0.01)
+lapply(data, dim)
 set.seed(1234)
 tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 

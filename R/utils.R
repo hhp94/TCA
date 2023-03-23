@@ -270,3 +270,25 @@ parse_features_metadata <- function(feature_ids, features_metadata_file) {
   rownames(metadata) <- metadata[, 1]
   return(metadata[feature_ids, 2:ncol(metadata)])
 }
+
+fastLm_stats <- function(object) {
+  return(c("SSE" = sum(object$residuals^2), "rdf" = object$df.residual))
+}
+
+fastLM_ftest <- function(rm, fm) {
+  rm_s <- fastLm_stats(rm)
+  fm_s <- fastLm_stats(fm)
+  stopifnot(rm_s["SSE"] >= fm_s["SSE"])
+  `F` <- unname(((rm_s["SSE"] - fm_s["SSE"]) / (rm_s["rdf"] - fm_s["rdf"])) / (fm_s["SSE"] / fm_s["rdf"]))
+  return(
+    list(
+      `F` = `F`,
+      `Pr(>F)` = pf(
+        `F`,
+        (rm_s["rdf"] - fm_s["rdf"]),
+        fm_s["rdf"],
+        lower.tail = FALSE
+      )
+    )
+  )
+}
