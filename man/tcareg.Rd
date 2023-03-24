@@ -82,16 +82,13 @@ Alternatively, in case \code{fast_mode == TRUE} the above model is fitted by fir
 Note that the null and alternative models will be set automatically, except when \code{test == 'custom'}, in which case they will be set according to the user-specified null and alternative hypotheses.
 
 Under the TCA regression model, several statistical tests can be performed by setting the argument \code{test} according to one of the following options:
-
-1. If \code{test == 'marginal'}, \code{tcareg} will perform the following for each source \eqn{l}. For each feature \eqn{j}, \eqn{\beta_{lj}} will be estimated and tested for a non-zero effect, while assuming \eqn{\beta_{hj}=0} for all other sources \eqn{h\neq l}.
-
-2. If \code{test == 'marginal_conditional'}, \code{tcareg} will perform the following for each source \eqn{l}. For each feature \eqn{j}, \eqn{\beta_{lj}} will be estimated and tested for a non-zero effect, while also estimating the effect sizes \eqn{\beta_{hj}} for all other sources \eqn{h\neq l} (thus accounting for covariances between the estimated effects of different sources).
-
-3. If \code{test == 'joint'}, \code{tcareg} will estimate for each feature \eqn{j} the effect sizes of all \eqn{k} sources \eqn{\beta_{1j},…,\beta_{kj}} and then test the set of \eqn{k} estimates of each feature \code{j} for a joint effect.
-
-4. If \code{test == 'single_effect'}, \code{tcareg} will estimate for each feature \eqn{j} the effect sizes of all \eqn{k} sources \eqn{\beta_{1j},…,\beta_{kj}}, under the assumption that \eqn{\beta_{1j} = … = \beta_{kj}}, and then test the set of \eqn{k} estimates of each feature \code{j} for a joint effect.
-
-5. If \code{test == 'custom'}, \code{tcareg} will estimate for each feature \eqn{j} the effect sizes of a predefined set of sources (defined by a user-specified alternative model) and then test their estimates for a joint effect, while accounting for a nested predefined set of sources (defined by a user-specified null model).
+\enumerate{
+\item If \code{test == 'marginal'}, \code{tcareg} will perform the following for each source \eqn{l}. For each feature \eqn{j}, \eqn{\beta_{lj}} will be estimated and tested for a non-zero effect, while assuming \eqn{\beta_{hj}=0} for all other sources \eqn{h\neq l}.
+\item If \code{test == 'marginal_conditional'}, \code{tcareg} will perform the following for each source \eqn{l}. For each feature \eqn{j}, \eqn{\beta_{lj}} will be estimated and tested for a non-zero effect, while also estimating the effect sizes \eqn{\beta_{hj}} for all other sources \eqn{h\neq l} (thus accounting for covariances between the estimated effects of different sources).
+\item If \code{test == 'joint'}, \code{tcareg} will estimate for each feature \eqn{j} the effect sizes of all \eqn{k} sources \eqn{\beta_{1j},…,\beta_{kj}} and then test the set of \eqn{k} estimates of each feature \code{j} for a joint effect.
+\item If \code{test == 'single_effect'}, \code{tcareg} will estimate for each feature \eqn{j} the effect sizes of all \eqn{k} sources \eqn{\beta_{1j},…,\beta_{kj}}, under the assumption that \eqn{\beta_{1j} = … = \beta_{kj}}, and then test the set of \eqn{k} estimates of each feature \code{j} for a joint effect.
+\item If \code{test == 'custom'}, \code{tcareg} will estimate for each feature \eqn{j} the effect sizes of a predefined set of sources (defined by a user-specified alternative model) and then test their estimates for a joint effect, while accounting for a nested predefined set of sources (defined by a user-specified null model).
+}
 }
 \examples{
 n <- 50
@@ -101,18 +98,22 @@ p1 <- 1
 p2 <- 1
 data <- test_data(n, m, k, p1, p2, 0.01)
 tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
-y <- matrix(rexp(n, rate=.1), ncol=1)
+y <- matrix(rexp(n, rate = .1), ncol = 1)
 rownames(y) <- rownames(data$W)
 # marginal conditional test:
 res0 <- tcareg(data$X, tca.mdl, y)
 # joint test:
 res1 <- tcareg(data$X, tca.mdl, y, test = "joint")
 # custom test, testing for a joint effect of sources 1,2 while accounting for source 3
-res2 <- tcareg(data$X, tca.mdl, y, test = "custom", null_model = c("3"),
-alternative_model = c("1","2","3"))
+res2 <- tcareg(data$X, tca.mdl, y,
+  test = "custom", null_model = c("3"),
+  alternative_model = c("1", "2", "3")
+)
 # custom test, testing for a joint effect of sources 1,2 assuming no effects under the null
-res3 <- tcareg(data$X, tca.mdl, y, test = "custom", null_model = NULL,
-alternative_model = c("1","2"))
+res3 <- tcareg(data$X, tca.mdl, y,
+  test = "custom", null_model = NULL,
+  alternative_model = c("1", "2")
+)
 
 }
 \references{

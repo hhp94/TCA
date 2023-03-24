@@ -39,9 +39,9 @@ This function allows to extract a subset of the features from a fitted TCA model
 data <- test_data(50, 20, 3, 0, 0, 0.01)
 tca.mdl <- tca(X = data$X, W = data$W)
 tca.mdl.subset <- tcasub(tca.mdl, rownames(data$X)[1:10])
-y <- matrix(rexp(50, rate=.1), ncol=1)
+y <- matrix(rexp(50, rate = .1), ncol = 1)
 rownames(y) <- rownames(data$W)
 # run tcareg test with an outcome y:
-res <- tcareg(data$X[1:10,], tca.mdl.subset, y, test = "joint")
+res <- tcareg(data$X[1:10, ], tca.mdl.subset, y, test = "joint")
 
 }

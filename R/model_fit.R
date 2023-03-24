@@ -68,7 +68,7 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
       cl <- init_cluster(num_cores)
       clusterExport(cl, varlist = c("C1_", "W_norms", "X_tilde", "W", "k", "p2", "C2", "p1", "p1", "lm"), envir = environment())
     }
-    res <- pblapply(1:m, function(j) {
+    res <- pblapply(seq_len(m), function(j) {
       mdl1.fit <- RcppEigen::fastLm(
         X = cbind(
           "(Intercept)" = 1.0, # <----------- Remember the intercept
@@ -95,7 +95,7 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
       # deltas_gammas_hat_pvals <- summary(mdl1.fit)$coefficients[2:(1+k+p1*k+p2),4];
       gammas_hat_pvals.joint <- numeric(p1) + 1
       if (p1) {
-        for (d in 1:p1) {
+        for (d in seq_len(p1)) {
           mdl0.fit <- RcppEigen::fastLm(
             X = cbind(
               "(Intercept)" = 1.0, # <----------- Remember the intercept
@@ -116,17 +116,17 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
       return(c(deltas_gammas_hat_pvals, gammas_hat_pvals.joint))
     }, cl = cl)
     if (parallel) stop_cluster(cl)
-    for (j in 1:m) {
+    for (j in seq_len(m)) {
       deltas_hat_pvals[j, ] <- res[[j]][(k + 1):(k + p2)]
       gammas_hat_pvals[j, ] <- res[[j]][(k + p2 + 1):(k + p2 + p1 * k)]
       gammas_hat_pvals.joint[j, ] <- res[[j]][(k + p2 + p1 * k + 1):(k + p2 + p1 * k + p1)]
     }
-    # res <- pblapply(1:m,function(j) {
+    # res <- pblapply(seq_len(m),function(j) {
     #   df = data.frame(y = X_tilde[,j], cbind(W/t(repmat(W_norms[,j],k,1)),if (p2>0) C2/t(repmat(W_norms[,j],p2,1)) else C2,if (p1>0) C1_/t(repmat(W_norms[,j],k*p1,1)) else C1_));
     #   return(summary(lm(y~., data = df))$coefficients[2:(1+k+p1*k+p2),4]);
     #   }, cl = cl )
     # if (parallel) stop_cluster(cl)
-    # for (j in 1:m){
+    # for (j in seq_len(m)){
     #   deltas_hat_pvals[j,] <- res[[j]][(k+1):(k+p2)]
     #   gammas_hat_pvals[j,] <- res[[j]][(k+p2+1):(k+p2+p1*k)]
     # }
@@ -143,7 +143,7 @@ init_means_vars <- function(C1_names, C2_names, feature_ids, source_ids, tau) {
   p2 <- length(C2_names)
   C1_names_ <- matrix("0", k * p1, 1)
   if (p1) {
-    for (j in 1:k) {
+    for (j in seq_len(k)) {
       C1_names_[((j - 1) * p1 + 1):(p1 * j)] <- unlist(lapply(C1_names, function(i) paste(source_ids[j], ".", i, sep = "")))
     }
   }
@@ -214,10 +214,10 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
     ub <- numeric(k + p2 + p1 * k) + config[["lsqlincon_inf"]]
     lb <- numeric(k + p2 + p1 * k) - config[["lsqlincon_inf"]]
     if (constrain_mu) {
-      ub[1:k] <- max(X)
-      ub[1:k] <- ub[1:k] - config[["mu_epsilon"]]
-      lb[1:k] <- min(X)
-      lb[1:k] <- lb[1:k] + config[["mu_epsilon"]]
+      ub[seq_len(k)] <- max(X)
+      ub[seq_len(k)] <- ub[seq_len(k)] - config[["mu_epsilon"]]
+      lb[seq_len(k)] <- min(X)
+      lb[seq_len(k)] <- lb[seq_len(k)] + config[["mu_epsilon"]]
     }
 
     if (p1) {
@@ -244,10 +244,10 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
 
     if (sum(colSums(mus_hat)) == 0) {
       if (parallel) clusterExport(cl, varlist = c("W_tilde", "C2_tilde", "C1_tilde", "X_tilde", "lb", "ub", "k", "p1", "p2", "lsqlincon"), envir = environment())
-      res <- pblapply(1:m, function(j) lsqlincon(cbind(W_tilde, C2_tilde, C1_tilde), X_tilde[, j], lb = lb, ub = ub), cl = cl)
+      res <- pblapply(seq_len(m), function(j) lsqlincon(cbind(W_tilde, C2_tilde, C1_tilde), X_tilde[, j], lb = lb, ub = ub), cl = cl)
     } else {
       if (parallel) clusterExport(cl, c("W_norms", "W", "C2", "C1_", "X_tilde", "lb", "ub", "k", "p1", "p2", "lsqlincon"), envir = environment())
-      res <- pblapply(1:m, function(j) {
+      res <- pblapply(seq_len(m), function(j) {
         lsqlincon(
           cbind(
             W / t(repmat(W_norms[, j], k, 1)),
@@ -261,8 +261,8 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
     }
 
     # Update estimtes
-    for (j in 1:m) {
-      mus_hat[j, ] <- res[[j]][1:k]
+    for (j in seq_len(m)) {
+      mus_hat[j, ] <- res[[j]][seq_len(k)]
       deltas_hat[j, seq(1, p2, length = p2)] <- res[[j]][seq(k + 1, k + p2, length = p2)]
       gammas_hat[j, seq(1, k * p1, length = k * p1)] <- res[[j]][seq(k + p2 + 1, k + p2 + p1 * k, length = p1 * k)]
     }
@@ -289,7 +289,7 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
       lb <- numeric(k) + config[["min_sd"]]
       ub <- numeric(k) + Inf
       if (parallel) clusterExport(cl, c("lb", "ub", "n", "k", "U", "const", "W_squared", "sigmas_hat", "tau_hat", "nloptr_opts", "minus_log_likelihood_sigmas"), envir = environment())
-      res <- pblapply(1:m, function(j) {
+      res <- pblapply(seq_len(m), function(j) {
         nloptr(
           x0 = sigmas_hat[j, ],
           eval_f = function(x, U_j, W_squared, const, tau_hat) minus_log_likelihood_sigmas(x, U_j, W_squared, const, tau_hat),
@@ -303,7 +303,7 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
         )$solution
       }, cl = cl)
 
-      for (j in 1:m) {
+      for (j in seq_len(m)) {
         sigmas_hat[j, ] <- res[[j]]
       }
 
@@ -336,7 +336,7 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
         V[V < config[["V_weight_limit"]]] <- config[["V_weight_limit"]]
       }
       if (parallel) clusterExport(cl, c("lb", "U", "W_squared_", "lsqlincon", "V", "n"), envir = environment())
-      res <- pblapply(1:m, function(j) {
+      res <- pblapply(seq_len(m), function(j) {
         x <- W_squared_ / t(repmat(V[, j], ncol(W_squared_), 1))
         # For numeric stability, normalize the design matrix and adjust the final estimats accordingly
         norms <- (colSums(x**2))**0.5
@@ -344,8 +344,8 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
         lsqlincon(x, U[, j] / V[, j], lb = lb * norms) / norms
       }, cl = cl)
       tau_squared_hat <- 0
-      for (j in 1:m) {
-        sigmas_hat[j, ] <- sqrt(res[[j]][1:k])
+      for (j in seq_len(m)) {
+        sigmas_hat[j, ] <- sqrt(res[[j]][seq_len(k)])
         tau_squared_hat <- tau_squared_hat + res[[j]][k + 1]
       }
       tau_hat <- sqrt(tau_squared_hat / m)
@@ -391,7 +391,7 @@ tca.fit_W <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, ga
 
   cl <- if (parallel) init_cluster(num_cores) else NULL
   if (parallel) clusterExport(cl, c("lb", "ub", "ones", "nloptr_opts", "X", "W", "C1", "C2", "n", "k", "p1", "m", "const", "tau_hat", "mus_hat", "gammas_hat", "deltas_hat", "sigmas_squared", "minus_log_likelihood_w", "calc_C1_W_interactions"), envir = environment())
-  res <- pblapply(1:n, function(i) {
+  res <- pblapply(seq_len(n), function(i) {
     nloptr(
       x0 = W[i, ],
       eval_f = function(x, x_i, c1_i, mus, tau, gammas, const, C_tilde, sigmas_squared, crossprod_deltas_c2_i) minus_log_likelihood_w(t(x), x_i, c1_i, mus, tau, gammas, const, C_tilde, sigmas_squared, crossprod_deltas_c2_i),
@@ -405,13 +405,13 @@ tca.fit_W <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, ga
       tau = tau_hat,
       gammas = gammas_hat,
       const = const,
-      C_tilde = if (p1 > 0) apply(as.matrix(1:k), 1, function(h) tcrossprod(gammas_hat[, (1 + (h - 1) * p1):(h * p1)], t(C1[i, ]))) else matrix(0, m, k),
+      C_tilde = if (p1 > 0) apply(as.matrix(seq_len(k)), 1, function(h) tcrossprod(gammas_hat[, (1 + (h - 1) * p1):(h * p1)], t(C1[i, ]))) else matrix(0, m, k),
       sigmas_squared = sigmas_squared,
       crossprod_deltas_c2_i = tcrossprod(deltas_hat, t(C2[i, ]))
     )$solution
   }, cl = cl)
   if (parallel) stop_cluster(cl)
-  for (i in 1:n) {
+  for (i in seq_len(n)) {
     W_hat[i, ] <- res[[i]]
   }
   return(W_hat)
@@ -441,12 +441,12 @@ calc_C1_W_interactions <- function(W, C1) {
 minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau) {
   m <- ncol(U)
   res <- matrix(0, m, 2)
-  tmp <- lapply(1:m, function(j) {
+  tmp <- lapply(seq_len(m), function(j) {
     V <- tcrossprod(W_squared, t(sigmas[j, ]**2)) + tau**2
     V_squared <- V**2
     return(c(-0.5 * (const - sum(log(V)) - sum(U[, j] / V)), -(tau * (sum(U[, j] / V_squared) - sum(1. / V)))))
   })
-  for (j in 1:m) {
+  for (j in seq_len(m)) {
     res[j, ] <- tmp[[j]]
   }
   res <- colSums(res)
@@ -475,7 +475,7 @@ minus_log_likelihood_sigmas <- function(sigmas, U_j, W_squared, const, tau) {
 # Returns the (minus) log likelihood of the model for a particular observation i in a list together with the gradient with respect to w_i
 # Input:
 # C_tilde - if p1=0 then C_tilde = matrix(0,m,k), otherwise it is calculated as follows:
-# for (h in 1:k){
+# for (h in seq_len(k)){
 #    C_tilde[,h] = tcrossprod(gammas[,(1+(h-1)*p1):(h*p1)],c1_i)
 # }
 # sigmas_squared = sigmas**2
@@ -503,14 +503,14 @@ estimate_Z <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, g
   m <- dim(X)[2]
   k <- ncol(W)
   Z_hat <- list()
-  for (h in 1:k) {
+  for (h in seq_len(k)) {
     Z_hat[[h]] <- matrix(0, n, m)
     colnames(Z_hat[[h]]) <- colnames(X)
     rownames(Z_hat[[h]]) <- rownames(X)
   }
   # Calculate quantities that can be calculated only once
   W_prime <- replicate(n, matrix(0, k, k), simplify = F)
-  for (i in 1:n) {
+  for (i in seq_len(n)) {
     W_prime[[i]] <- tcrossprod(W[i, ], W[i, ]) / (tau_hat**2)
   }
   # if (m==1) deltas_hat <- t(as.matrix(deltas_hat))
@@ -518,15 +518,15 @@ estimate_Z <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, g
   cl <- if (parallel) init_cluster(num_cores) else NULL
   if (parallel) clusterExport(cl, c("W", "mus_hat", "sigmas_hat", "tau_hat", "C1", "gammas_hat", "W_prime", "C2_prime", "estimate_Z_j"), envir = environment())
   # Estimate Z
-  res <- pblapply(1:m, function(j) estimate_Z_j(W, mus_hat[j, ], sigmas_hat[j, ], tau_hat, C1, gammas_hat[j, ], W_prime, C2_prime[, j], scale), cl = cl)
+  res <- pblapply(seq_len(m), function(j) estimate_Z_j(W, mus_hat[j, ], sigmas_hat[j, ], tau_hat, C1, gammas_hat[j, ], W_prime, C2_prime[, j], scale), cl = cl)
   if (parallel) stop_cluster(cl)
-  for (j in 1:m) {
-    for (h in 1:k) {
+  for (j in seq_len(m)) {
+    for (h in seq_len(k)) {
       Z_hat[[h]][, j] <- res[[j]][, h]
     }
   }
   # add rownames and colnames and transpose matrices
-  for (h in 1:k) {
+  for (h in seq_len(k)) {
     rownames(Z_hat[[h]]) <- rownames(X)
     colnames(Z_hat[[h]]) <- colnames(X)
     Z_hat[[h]] <- t(Z_hat[[h]])
@@ -547,7 +547,7 @@ estimate_Z_j <- function(W, mus_hat_j, sigmas_hat_j, tau_hat, C1, gammas_hat_j, 
   Sig_j_orig <- diag(sigmas_hat_j**2)
   Sig_j <- matrix.inverse(Sig_j_orig)
   C1_prime <- tcrossprod(C1, t(Reshape(gammas_hat_j, p1, k)))
-  for (i in 1:n) {
+  for (i in seq_len(n)) {
     # S_ij_inv <- W_prime[[i]]+Sig_j
     # S_ij <- matrix.inverse(S_ij_inv)
     ## the above two lines are the straightforward (slower) way to calculate S_ij; calculate 'matrix.inverse(W_prime[[i]]+Sig_j)' using the lemma from Miller 1981:
@@ -567,11 +567,11 @@ tcareg.fit <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_
   k <- ncol(W)
 
   if (fast_mode) {
-    if (test == "joint" | test == "single_effect" | test == "marginal_conditional") alternative_model <- 1:k
+    if (test == "joint" | test == "single_effect" | test == "marginal_conditional") alternative_model <- seq_len(k)
     if (test == "joint" | test == "single_effect") null_model <- c()
     if (test == "marginal") {
       results <- vector(mode = "list", k)
-      for (h in 1:k) results[[h]] <- tcareg.fit.fast(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, test, null_model, alternative_model = h, parallel, num_cores)
+      for (h in seq_len(k)) results[[h]] <- tcareg.fit.fast(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, test, null_model, alternative_model = h, parallel, num_cores)
     } else {
       results <- tcareg.fit.fast(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, test, null_model, alternative_model, parallel, num_cores)
     }
@@ -603,10 +603,10 @@ tcareg.fit.fast <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, ga
   lm0.joint.fit <- if (p3) lm(y ~ ., data = data.frame(C3)) else lm(y ~ 1)
   cl <- if (parallel) init_cluster(num_cores) else NULL
   if (parallel) clusterExport(cl, c("Z_hat", "n", "k", "y", "test", "null_model", "alternative_model", "C3", "p3", "num_betas", "lm0.joint.fit"), envir = environment())
-  res <- pblapply(1:m, function(j) {
+  res <- pblapply(seq_len(m), function(j) {
     r <- list()
     D <- matrix(0, n, k)
-    for (h in 1:k) D[, h] <- Z_hat[[h]][j, ]
+    for (h in seq_len(k)) D[, h] <- Z_hat[[h]][j, ]
     if (test == "single_effect") D <- as.matrix(rowSums(D))
     if (test == "custom") {
       D <- D[, alternative_model, drop = F]
@@ -665,7 +665,7 @@ tcareg.fit.fast <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, ga
   pvals <- lst[["pvals"]]
   qvals <- lst[["qvals"]]
 
-  for (j in 1:m) {
+  for (j in seq_len(m)) {
     phi[j, 1] <- res[[j]][["phi"]]
     beta[j, ] <- res[[j]][["beta"]]
     intercept[j, 1] <- res[[j]][["intercept"]]
@@ -729,7 +729,7 @@ tcareg.fit_joint <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, g
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
   k <- ncol(W)
 
-  lst <- init_tcareg.fit_model(colnames(X), colnames(W), colnames(C3), 1:k, single_effect)
+  lst <- init_tcareg.fit_model(colnames(X), colnames(W), colnames(C3), seq_len(k), single_effect)
   phi <- lst[["phi"]]
   beta <- lst[["beta"]]
   intercept <- lst[["intercept"]]
@@ -740,7 +740,7 @@ tcareg.fit_joint <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, g
   qvals <- lst[["qvals"]]
   stats <- lst[["stats"]]
 
-  mdl1 <- tcareg.optimize(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, 1:k, parallel, num_cores, single_effect)
+  mdl1 <- tcareg.optimize(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, seq_len(k), parallel, num_cores, single_effect)
   phi[, 1] <- mdl1[["phi"]]
   beta[, ] <- mdl1[["beta"]]
   intercept[, 1] <- mdl1[["intercept"]]
@@ -775,7 +775,7 @@ tcareg.fit_marginal <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1
   } else {
     mdl0 <- lm(y ~ ., data = data.frame(C3))
   }
-  for (h in 1:k) {
+  for (h in seq_len(k)) {
     lst <- init_tcareg.fit_model(colnames(X), colnames(W), colnames(C3), h, FALSE)
     phi <- lst[["phi"]]
     beta <- lst[["beta"]]
@@ -814,11 +814,11 @@ tcareg.fit_marginal_conditional <- function(X, y, W, mus_hat, sigmas_hat, C2, de
   k <- ncol(W)
   results <- list()
   # Calculate the likelihood of the alternative model
-  mdl1 <- tcareg.optimize(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, 1:k, parallel, num_cores, FALSE)
+  mdl1 <- tcareg.optimize(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, seq_len(k), parallel, num_cores, FALSE)
   # Calculate the likelihood of each of the null models
   df <- 1
-  for (h in 1:k) {
-    lst <- init_tcareg.fit_model(colnames(X), colnames(W), colnames(C3), 1:k, FALSE)
+  for (h in seq_len(k)) {
+    lst <- init_tcareg.fit_model(colnames(X), colnames(W), colnames(C3), seq_len(k), FALSE)
     phi <- lst[["phi"]]
     beta <- lst[["beta"]]
     intercept <- lst[["intercept"]]
@@ -834,7 +834,7 @@ tcareg.fit_marginal_conditional <- function(X, y, W, mus_hat, sigmas_hat, C2, de
     intercept[, 1] <- mdl1[["intercept"]]
     alpha[, ] <- mdl1[["alpha"]]
 
-    mdl0 <- tcareg.optimize(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, setdiff(1:k, h), parallel, num_cores, FALSE)
+    mdl0 <- tcareg.optimize(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, setdiff(seq_len(k), h), parallel, num_cores, FALSE)
     null_ll[, 1] <- mdl0[["ll"]]
     alternative_ll[, 1] <- mdl1[["ll"]]
 
@@ -984,7 +984,7 @@ tcareg.optimize <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, ga
   # Fit the model for each feature
   cl <- if (parallel) init_cluster(num_cores) else NULL
   if (parallel) clusterExport(cl, c("lb", "ub", "p1", "k", "W", "y", "C1", "C3", "n", "l", "X0", "const", "sigmas_squared", "X_tilde", "V", "mdl", "gammas_hat", "sigmas_squared", "mus_hat", "lambda", "single_effect", "nloptr_opts", "conditional_model_minus_log_likelihood", "tcareg.optimize_j"), envir = environment())
-  res <- pblapply(1:m, function(j) tcareg.optimize_j(j, y, W, C1, C3, mus_hat, gammas_hat, const, sigmas_squared, V, X_tilde, X0, mdl, lb, ub, nloptr_opts, single_effect, lambda), cl = cl)
+  res <- pblapply(seq_len(m), function(j) tcareg.optimize_j(j, y, W, C1, C3, mus_hat, gammas_hat, const, sigmas_squared, V, X_tilde, X0, mdl, lb, ub, nloptr_opts, single_effect, lambda), cl = cl)
   if (parallel) stop_cluster(cl)
 
   intercept <- matrix(0, m, 1)
@@ -993,7 +993,7 @@ tcareg.optimize <- function(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, ga
   phi <- matrix(0, m, 1)
   ll <- matrix(0, m, 1)
 
-  for (j in 1:m) {
+  for (j in seq_len(m)) {
     phi[j, ] <- res[[j]][["solution"]][1]
     beta[j, ] <- res[[j]][["solution"]][2:(1 + num_betas)]
     intercept[j, ] <- res[[j]][["solution"]][2 + num_betas]
@@ -1068,7 +1068,7 @@ tcareg.optimize_j <- function(j, y, W, C1, C3, mus_hat, gammas_hat, const, sigma
 #     clusterExport(cl, varlist = c("l","k","n","m","p1","C1_","X_tilde","const","V","X","y","W","mus_hat","sigmas_squared","C1","deltas_hat","C1","gammas_hat","tau_hat", "C3", "mdl", "phis", "alphas", "betas", "intercepts"), envir=environment())
 #   }
 #   flog.debug("Calculate the likelihood for every feature...")
-#   res <- pblapply(1:m,function(j){
+#   res <- pblapply(seq_len(m),function(j){
 #     gammas_hat_j_tilde <- t(Reshape(gammas_hat[j,],p1,k)[,mdl]);
 #     gammas_hat_j_tilde <- if (p1 == 1) t(gammas_hat_j_tilde) else gammas_hat_j_tilde;
 #     e1 <- V[,j];
@@ -1088,7 +1088,7 @@ tcareg.optimize_j <- function(j, y, W, C1, C3, mus_hat, gammas_hat, const, sigma
 #     }, cl = cl )
 #   if (parallel) stop_cluster(cl)
 #   ll0 <- numeric(m)
-#   for (j in 1:m) ll0[j] <- res[[j]]
+#   for (j in seq_len(m)) ll0[j] <- res[[j]]
 #   return(ll0)
 # }
 
@@ -1129,9 +1129,9 @@ conditional_model_minus_log_likelihood <- function(x, y, C3, const, sigmas_squar
 #'   alpha0 <- matrix(0,m,p3+1) # include intercept terms
 #'   cl <- if (parallel) init_cluster(num_cores) else NULL
 #'   if (parallel) clusterExport(cl, c("n","l","p3","Z_hat","mdl","y","lambda","C3","get_initial_estimates_j","single_effect"), envir=environment())
-#'   res <- pblapply(1:m, function(j) get_initial_estimates_j(j, n, l, p3, Z_hat, mdl, y, lambda, C3, single_effect), cl = cl )
+#'   res <- pblapply(seq_len(m), function(j) get_initial_estimates_j(j, n, l, p3, Z_hat, mdl, y, lambda, C3, single_effect), cl = cl )
 #'   if (parallel) stop_cluster(cl)
-#'   for (j in 1:m){
+#'   for (j in seq_len(m)){
 #'     beta0[j,] = res[[j]][["beta0"]]
 #'     alpha0[j,] = res[[j]][["alpha0"]]
 #'     phi0[j,1] = res[[j]][["phi0"]]

@@ -25,7 +25,6 @@ bottlenecks we can resolve.
 * Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`
 * Added `fastLM_ftest()` to `./R/utils.R` to calculate partial f-tests.  
 
-
 ```{r setup, eval = FALSE}
 library(profvis) # Profiling tool
 library(devtools)
@@ -37,7 +36,8 @@ load_all()
 ```{r setup, eval = FALSE}
 # Simulate the data
 set.seed(1234)
-data <- test_data(20, 100000, 6, 1, 1, 0.01)
+# data <- test_data(20, 10000, 6, 1, 1, 0.01)
+# tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 lapply(data, dim)
 
 set.seed(1234)
@@ -76,182 +76,10 @@ the data matrix and the vector y.
   errors. We can create a test case for this.  
   + Have to implement an `anova()` method for `RcppEigen::fastLm()`.  
 
-# anova.lm
-## stat.anova
-```{r}
-stat.anova <-
-  function(table, test = c("Rao", "LRT", "Chisq", "F", "Cp"), scale, df.scale, n) {
-    test <- match.arg(test)
-    dev.col <- match("Deviance", colnames(table))
-    if (test == "Rao") dev.col <- match("Rao", colnames(table))
-    if (is.na(dev.col)) dev.col <- match("Sum of Sq", colnames(table))
-    switch(test,
-      "Rao" = ,
-      "LRT" = ,
-      "Chisq" = {
-        dfs <- table[, "Df"]
-        vals <- table[, dev.col] / scale * sign(dfs)
-        vals[dfs %in% 0] <- NA
-        vals[!is.na(vals) & vals < 0] <- NA # rather than p = 0
-        cbind(table,
-          "Pr(>Chi)" = pchisq(vals, abs(dfs), lower.tail = FALSE)
-        )
-      },
-      "F" = {
-        dfs <- table[, "Df"]
-        Fvalue <- (table[, dev.col] / dfs) / scale
-        Fvalue[dfs %in% 0] <- NA
-        Fvalue[!is.na(Fvalue) & Fvalue < 0] <- NA # rather than p = 0
-        cbind(table,
-          F = Fvalue,
-          "Pr(>F)" = pf(Fvalue, abs(dfs), df.scale, lower.tail = FALSE)
-        )
-      },
-      "Cp" = { # depends on the type of object.
-        if ("RSS" %in% names(table)) { # an lm object
-          cbind(table, Cp = table[, "RSS"] +
-            2 * scale * (n - table[, "Res.Df"]))
-        } else { # a glm object
-          cbind(table, Cp = table[, "Resid. Dev"] +
-            2 * scale * (n - table[, "Resid. Df"]))
-        }
-      }
-    )
-  }
-```
-
-## anova.lmlist
-```{r}
-anova.lmlist <- function(object, ..., scale = 0, test = "F") {
-  objects <- list(object, ...)
-  responses <- as.character(lapply(
-    objects,
-    function(x) deparse(x$terms[[2L]])
-  ))
-  sameresp <- responses == responses[1L]
-  if (!all(sameresp)) {
-    objects <- objects[sameresp]
-    warning(
-      gettextf(
-        "models with response %s removed because response differs from model 1",
-        sQuote(deparse(responses[!sameresp]))
-      ),
-      domain = NA
-    )
-  }
-
-  ns <- sapply(objects, function(x) length(x$residuals))
-  if (any(ns != ns[1L])) {
-    stop("models were not all fitted to the same size of dataset")
-  }
-
-  ## calculate the number of models
-  nmodels <- length(objects)
-  if (nmodels == 1) {
-    return(anova.lm(object))
-  }
-
-  ## extract statistics
-
-  resdf <- as.numeric(lapply(objects, df.residual))
-  resdev <- as.numeric(lapply(objects, deviance))
-
-  ## construct table and title
-
-  table <- data.frame(
-    resdf, resdev, c(NA, -diff(resdf)),
-    c(NA, -diff(resdev))
-  )
-  variables <- lapply(objects, function(x) {
-    paste(deparse(formula(x)), collapse = "\n")
-  })
-  dimnames(table) <- list(
-    1L:nmodels,
-    c("Res.Df", "RSS", "Df", "Sum of Sq")
-  )
-
-  title <- "Analysis of Variance Table\n"
-  topnote <- paste0("Model ", format(1L:nmodels), ": ", variables,
-    collapse = "\n"
-  )
-
-  ## calculate test statistic if needed
-
-  if (!is.null(test)) {
-    bigmodel <- order(resdf)[1L]
-    scale <- if (scale > 0) scale else resdev[bigmodel] / resdf[bigmodel]
-    table <- stat.anova(
-      table = table, test = test,
-      scale = scale,
-      df.scale = resdf[bigmodel],
-      n = length(objects[[bigmodel]]$residuals)
-    )
-  }
-  structure(table,
-    heading = c(title, topnote),
-    class = c("anova", "data.frame")
-  )
-}
-```
-
-## anova.lm
-```{r}
-anova.lm <- function(object, ...) {
-  ## Do not copy this: anova.lmlist is not an exported object.
-  ## See anova.glm for further comments.
-  if (length(list(object, ...)) > 1L) {
-    return(anova.lmlist(object, ...))
-  }
-
-  if (!inherits(object, "lm")) {
-    warning("calling anova.lm(<fake-lm-object>) ...")
-  }
-  w <- object$weights
-  ssr <- sum(if (is.null(w)) object$residuals^2 else w * object$residuals^2)
-  mss <- sum(if (is.null(w)) object$fitted.values^2 else w * object$fitted.values^2)
-  if (ssr < 1e-10 * mss) {
-    warning("ANOVA F-tests on an essentially perfect fit are unreliable")
-  }
-  dfr <- df.residual(object)
-  p <- object$rank
-  if (p > 0L) {
-    p1 <- 1L:p
-    comp <- object$effects[p1]
-    asgn <- object$assign[qr.lm(object)$pivot][p1]
-    nmeffects <- c("(Intercept)", attr(object$terms, "term.labels"))
-    tlabels <- nmeffects[1 + unique(asgn)]
-    ss <- c(vapply(split(comp^2, asgn), sum, 1.0), ssr)
-    df <- c(lengths(split(asgn, asgn)), dfr)
-  } else {
-    ss <- ssr
-    df <- dfr
-    tlabels <- character()
-  }
-  ms <- ss / df
-  f <- ms / (ssr / dfr)
-  P <- pf(f, df, dfr, lower.tail = FALSE)
-  table <- data.frame(df, ss, ms, f, P)
-  table[length(P), 4:5] <- NA
-  dimnames(table) <- list(
-    c(tlabels, "Residuals"),
-    c("Df", "Sum Sq", "Mean Sq", "F value", "Pr(>F)")
-  )
-  if (attr(object$terms, "intercept")) table <- table[-1, ]
-  structure(table,
-    heading = c(
-      "Analysis of Variance Table\n",
-      paste("Response:", deparse(formula(object)[[2L]]))
-    ),
-    class = c("anova", "data.frame")
-  ) # was "tabular"
-}
-```
-
-
 # Replacing codes
 * Warning, this might be unsafe
 
-## Change 1
+## fastLm
 * Replace the `data.frame()` and `lm()` call with `RcppEigen::fastLm`
 ```{r, eval = F}
 df <-
@@ -307,7 +135,6 @@ mdl1.coef <- summary(mdl1.fit)$coefficients
 deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
 ```
 
-## Change 2
 Sample with change 1
 ```{r, eval = F}
 # Before
@@ -347,6 +174,15 @@ for (d in 1:p1) {
 }
 ```
 
+## repmat
+* repmat is taking a decent chunk out of the time. `MESS::repmat` is about 50%
+faster at the current dimension.  
+```{r}
+use_package("MESS")
+```
+
+* Replace this pattern `repmat(W_norms[, j],` with `MESS::repmat(matrix(W_norms[, j], nrow = 1),`
+
 # Test
 ## Did results changed?
 ```{r}
@@ -379,7 +215,6 @@ fit_1_2_1_results$results <- purrr::map2_lgl(
   fit_1_2_1_results$new_fit,
   compare_fit
 )
-
 
 plan(sequential)
 # waldo::compare(fit_1_2_1_results$deltas_hat_pvals, tca.mdl$deltas_hat_pvals)
@@ -419,6 +254,7 @@ stopifnot(all(dplyr::near(deltas_gammas_hat_pvals, deltas_gammas_hat_pvals.1)))
 ```
 
 # Scrap
+## fastLm
 ```{r}
 rand_y <- rnorm(nrow(mtcars))
 df <- cbind(y = rand_y, mtcars)
@@ -457,3 +293,32 @@ fastLM_ftest(fastLm.mdl0.fit, fastLm.mdl1.fit)
 summary(fastLm.mdl0.fit)
 mdl1.fit <- fastLm.mdl0.fit
 ```
+
+## repmat
+```{r}
+# saveRDS(list(a = W_norms[, j], n = k, m = 1), "assets/repmat_optimize.rds")
+# stop()
+
+repmat_opt <- readRDS("assets/repmat_optimize.rds")
+waldo::compare(
+  t(repmat(repmat_opt$a, repmat_opt$n, repmat_opt$m)),
+  MESS::repmat(matrix(repmat_opt$a), repmat_opt$m, repmat_opt$n)
+)
+waldo::compare(
+  pracma::repmat(repmat_opt$a, 1000, 1),
+  MESS::repmat(matrix(repmat_opt$a, nrow = 1), 1000, 1)
+)
+
+microbenchmark::microbenchmark(
+  t(repmat(repmat_opt$a, repmat_opt$n, repmat_opt$m)),
+  MESS::repmat(matrix(repmat_opt$a, nrow = 1), 1000, 1),
+  times = 1000
+)
+
+microbenchmark::microbenchmark(
+  pracma::repmat(repmat_opt$a, 1, 1000),
+  MESS::repmat(matrix(repmat_opt$a, nrow = 1), 1, 1000),
+  times = 1000
+)
+```
+

@@ -26,7 +26,8 @@ Imports:
     rlang,
     RcppEigen,
     furrr,
-    purrr
+    purrr,
+    MESS
 Depends: R (>= 3.5.0)
 Suggests: 
     testthat (>= 3.0.0),

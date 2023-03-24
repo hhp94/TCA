@@ -36,7 +36,7 @@ refactor.run <- function(X, k, sparsity, C, C.remove, sd_threshold, num_comp, ra
   score <- pcs$x
 
   flog.info("Computing a low rank approximation of X...")
-  X_hat <- score[, 1:k] %*% t(coeff[, 1:k])
+  X_hat <- score[, seq_len(k)] %*% t(coeff[, seq_len(k)])
   An <- scale(t(X_adj), center = T, scale = F)
   Bn <- scale(X_hat, center = T, scale = F)
   An <- t(t(An) * (1 / sqrt(apply(An^2, 2, sum))))
@@ -48,7 +48,7 @@ refactor.run <- function(X, k, sparsity, C, C.remove, sd_threshold, num_comp, ra
   ranked_list <- rownames(X)[dsort$ix]
 
   flog.info("Computing the ReFACTor components based on the top %s features with lowest distances...", sparsity)
-  features <- ranked_list[1:sparsity]
+  features <- ranked_list[seq_len(sparsity)]
 
   if (C.remove) {
     refactor_pcs <- fast.prcomp(scale(t(X_adj[features, ])))
@@ -58,5 +58,5 @@ refactor.run <- function(X, k, sparsity, C, C.remove, sd_threshold, num_comp, ra
 
   flog.info("Finished refactor.")
 
-  return(list("scores" = refactor_pcs$x[, 1:num_comp], "coeffs" = refactor_pcs$rotation[, 1:num_comp], "ranked_list" = ranked_list))
+  return(list("scores" = refactor_pcs$x[, seq_len(num_comp)], "coeffs" = refactor_pcs$rotation[, seq_len(num_comp)], "ranked_list" = ranked_list))
 }

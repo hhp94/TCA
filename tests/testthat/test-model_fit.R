@@ -2,7 +2,7 @@ test_that("tca generated the same result as the fixture created in 1.2.1", {
   n_test <- 2 # out of maximum number of simulation time
   data <- readRDS(test_path("fixtures", "exp1_simdata.rds"))[seq_len(n_test), ]
   fit_df <- readRDS(test_path("fixtures", "exp1_simdata_fit_1_2_1.rds"))[seq_len(n_test), ]
-  
+
   set.seed(unique(data$seed))
 
   fit_df$new_fit <- lapply(
@@ -28,7 +28,7 @@ test_that("tca generated the same result as the fixture created in 1.2.1", {
     fit_df$new_fit,
     compare_fit
   )
-  
+
   expect_true(all(fit_df$results))
 })
 
