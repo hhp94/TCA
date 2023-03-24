@@ -292,3 +292,42 @@ fastLM_ftest <- function(rm, fm) {
     )
   )
 }
+
+### DEBUG ------------------
+# summary_fastLm <- function(object, ...) {
+#   message("Chunk 1")
+#   coef <- object$coefficients
+#   se   <- object$se
+#   tval <- coef / se
+#   
+#   object$coefficients <- cbind(
+#     Estimate     = coef,
+#     "Std. Error" = se,
+#     "t value"    = tval,
+#     "Pr(>|t|)"   = 2 * pt(-abs(tval), df =
+#                             object$df.residual)
+#   )
+#   
+#   ## cf src/stats/R/lm.R and case with no weights and an intercept
+#   f <- object$fitted.values
+#   r <- object$residuals
+#   message("Chunk 2")
+#   #mss <- sum((f - mean(f))^2)
+#   mss <- if (object$intercept)
+#     sum((f - mean(f)) ^ 2)
+#   else
+#     sum(f ^ 2)
+#   rss <- sum(r ^ 2)
+#   
+#   object$r.squared <- mss / (mss + rss)
+#   df.int <- if (object$intercept)
+#     1L
+#   else
+#     0L
+#   n <- length(f)
+#   rdf <- object$df.residual
+#   object$adj.r.squared <-
+#     1 - (1 - object$r.squared) * ((n - df.int) / rdf)
+#   class(object) <- "summary.fastLm"
+#   object
+# }

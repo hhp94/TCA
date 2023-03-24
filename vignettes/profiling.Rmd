@@ -52,7 +52,7 @@ set.seed(1234)
 # sequential <- profvis({
 #   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 # })
-#
+# 
 # saveRDS(sequential, "./assets/sequential_n20_m1e5.rds")
 # use_build_ignore("./assets/sequential_n20_m1e5.rds")
 # use_git_ignore("./assets/sequential_n20_m1e5.rds")
@@ -249,44 +249,57 @@ gval <-
 return(list("objective" = fval, "gradient" = gval))
 ```
 
+## vars.mle = TRUE
+* Not really a way to get around the `nloptr()` call that takes the majority of the
+time to optimize sigma.  
+* The only "improvement" that's low hanging is remove assignment calls for objects
+that is used only once in the function to minimize overhead for `nloptr()`
+
+## parallel
+
 ## removing memory consuming `<-` calls
 * Check for memory consuming `<-` calls
 
 # Test
 ## Did results changed?
 ```{r}
-n_test <- 2
-data <- readRDS(test_path("fixtures", "exp1_simdata.rds"))
-fit_1_2_1_results <- readRDS(test_path("fixtures", "exp1_simdata_fit_1_2_1.rds"))
-fit_1_2_1_results[seq_len(n_test), ]
+data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))[1, ]
+fitted <- readRDS(test_path("fixtures", "sim1_exp_2_fit_1_2_1.rds"))[1, ]
+
 set.seed(1234)
 
-fit_1_2_1_results$new_fit <- lapply(
+fitted$new_fit <- lapply(
   data$df,
   \(d) {
     tca(
       X = d$X,
       W = d$W,
       C1 = d$C1,
-      C2 = d$C2
+      C2 = d$C2,
+      vars.mle = TRUE
     )
   }
 )
 
+sapply(1:length(fitted$fit_1_2_1[[1]]),
+       \(x) {max(fitted$fit_1_2_1[[1]][[x]] - fitted$new_fit[[1]][[x]])})
+
+
+fitted$fit_1_2_1[[1]] - fitted$new_fit[[1]]
 compare_fit <- function(o, n) {
   all(sapply(names(o), \(x) {
     all(near(o[[x]], n[[x]]))
   }))
 }
 
-fit_1_2_1_results$results <- purrr::map2_lgl(
-  fit_1_2_1_results$fit_1_2_1,
-  fit_1_2_1_results$new_fit,
+fitted$results <- purrr::map2_lgl(
+  fitted$fit_1_2_1,
+  fitted$new_fit,
   compare_fit
 )
 
 plan(sequential)
-# waldo::compare(fit_1_2_1_results$deltas_hat_pvals, tca.mdl$deltas_hat_pvals)
+# waldo::compare(fitted$deltas_hat_pvals, tca.mdl$deltas_hat_pvals)
 ```
 
 ## fastLm
@@ -323,6 +336,23 @@ stopifnot(all(dplyr::near(deltas_gammas_hat_pvals, deltas_gammas_hat_pvals.1)))
 ```
 
 # Scrap
+## parallel
+* Let's think about the parallel.  
+* Looks like R is stopping and starting clusters multiple times.  
+```{r}
+set.seed(1234)
+data <- test_data(250, 10000, 6, 3, 10, 0.01)
+# Sequential
+sim_1 <- profvis({
+  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+})
+
+# Parallel
+sim_2 <- profvis({
+  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE, num_cores = 4L)
+})
+```
+
 ## fastLm
 ```{r}
 rand_y <- rnorm(nrow(mtcars))
@@ -361,6 +391,19 @@ microbenchmark::microbenchmark(
 fastLM_ftest(fastLm.mdl0.fit, fastLm.mdl1.fit)
 summary(fastLm.mdl0.fit)
 mdl1.fit <- fastLm.mdl0.fit
+```
+
+### Bug
+```{r}
+set.seed(1234)
+data <- test_data(500, 5000, 6, 1, 1, 0.01)
+tca.mdl <-
+    tca(
+      X = data$X,
+      W = data$W,
+      C1 = data$C1,
+      C2 = data$C2
+    )
 ```
 
 ## repmat
@@ -526,5 +569,87 @@ gval2 <-
     MESS::repmat(V**2, 1, k))
 
 waldo::compare(gval, gval2)
+```
+
+## vars.mle = TRUE
+* Not really a way to get around the `nloptr()` call that takes the majority of the
+time to optimize sigma.  
+* The only "improvement" that's low hanging is remove extra assignment calls
+in the function to minimize overhead for `nloptr()`
+
+```{r}
+set.seed(1234)
+data <- test_data(200, 5000, 6, 1, 1, 0.01)
+tca.mdl <-
+    tca(
+      X = data$X,
+      W = data$W,
+      C1 = data$C1,
+      C2 = data$C2
+    )
+
+sequential_vars.alt <- profvis({
+  tca.mdl <-
+    tca(
+      X = data$X,
+      W = data$W,
+      C1 = data$C1,
+      C2 = data$C2
+    )
+})
+
+sequential_vars.mle <- profvis({
+  tca.mdl <-
+    tca(
+      X = data$X,
+      W = data$W,
+      C1 = data$C1,
+      C2 = data$C2,
+      vars.mle = TRUE
+    )
+})
+
+sequential_vars.mle2 <- profvis({
+  tca.mdl <-
+    tca(
+      X = data$X,
+      W = data$W,
+      C1 = data$C1,
+      C2 = data$C2,
+      vars.mle = TRUE
+    )
+})
+
+
+saveRDS(sequential_vars.mle, "./assets/sequential_n200_m1e3_vars.mle.rds")
+```
+
+```{r}
+sequential_vars.mle <- readRDS("./assets/sequential_n200_m1e3_vars.mle.rds")
+sequential_vars.mle
+
+```
+
+### Rfast::colsums
+* Rfast::colsums can be faster than colSums. Use with caution. We can try to 
+benchmark the fit of the results before and after the use of colsums for a 
+close to realistic set of data.  
+* Rfast is faster, but it doesn't reproduce the result of fit 1.2.1.  
+
+```{r}
+tm <- matrix(rnorm(25e6), nrow = 5000)
+
+waldo::compare(
+  colSums(tm),
+  Rfast::colsums(tm),
+  tolerance = .Machine$double.eps^0.5
+)
+
+microbenchmark::microbenchmark(
+  colSums(tm),
+  Rfast::colsums(tm),
+  matrixStats::colSums2(tm)
+)
+
 ```
 

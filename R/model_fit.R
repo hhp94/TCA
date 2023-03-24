@@ -66,7 +66,7 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
     cl <- NULL
     if (parallel) {
       cl <- init_cluster(num_cores)
-      clusterExport(cl, varlist = c("C1_", "W_norms", "X_tilde", "W", "k", "p2", "C2", "p1", "p1", "lm"), envir = environment())
+      clusterExport(cl, varlist = c("C1_", "W_norms", "X_tilde", "W", "k", "p2", "C2", "p1", "p1", "fastLM_ftest"), envir = environment())
     }
     res <- pblapply(seq_len(m), function(j) {
       mdl1.fit <- RcppEigen::fastLm(
@@ -511,8 +511,8 @@ minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau) {
   res <- matrix(0, m, 2)
   tmp <- lapply(seq_len(m), function(j) {
     V <- tcrossprod(W_squared, t(sigmas[j, ]**2)) + tau**2
-    V_squared <- V**2
-    return(c(-0.5 * (const - sum(log(V)) - sum(U[, j] / V)), -(tau * (sum(U[, j] / V_squared) - sum(1. / V)))))
+    # V_squared <- V**2
+    return(c(-0.5 * (const - sum(log(V)) - sum(U[, j] / V)), -(tau * (sum(U[, j] / V**2) - sum(1. / V)))))
   })
   for (j in seq_len(m)) {
     res[j, ] <- tmp[[j]]
@@ -530,15 +530,15 @@ minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau) {
 #  tau
 minus_log_likelihood_sigmas <- function(sigmas, U_j, W_squared, const, tau) {
   k <- length(sigmas)
-  n <- nrow(W_squared)
+  # n <- nrow(W_squared)
   V <- tcrossprod(W_squared, t(sigmas**2)) + tau**2
-  V_squared <- V**2
-  W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = n, 1)
+  # V_squared <- V**2
+  W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = nrow(W_squared), 1)
   return(list(
     "objective" = -0.5 * (const - sum(log(V)) - sum(U_j / V)),
     "gradient" = -(
       colSums(W_squared_sig * MESS::repmat(matrix(U_j), ncol = k) /
-        MESS::repmat(V_squared, 1, ncol = k)) -
+        MESS::repmat(V**2, 1, ncol = k)) -
         colSums(W_squared_sig / MESS::repmat(V, 1, ncol = k))
     )
   ))
