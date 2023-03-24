@@ -26,7 +26,7 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
 
   const <- -n * log(2 * pi)
   ll_prev <- -Inf
-  for (iter in 1:max_iters) {
+  for (iter in seq_len(max_iters)) {
     if (refit_W) flog.info("Iteration %s out of %s external iterations (fitting all parameters including W)...", iter, max_iters)
 
     flog.info("Fitting means and variances...")
@@ -72,14 +72,14 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
       mdl1.fit <- RcppEigen::fastLm(
         X = cbind(
           "(Intercept)" = 1.0, # <----------- Remember the intercept
-          W / t(repmat(W_norms[, j], k, 1)),
+          W / MESS::repmat(matrix(W_norms[, j]), ncol = k),
           if (p2 > 0) {
-            C2 / t(repmat(W_norms[, j], p2, 1))
+            C2 / MESS::repmat(matrix(W_norms[, j]), ncol = p2)
           } else {
             C2
           },
           if (p1 > 0) {
-            C1_ / t(repmat(W_norms[, j], k * p1, 1))
+            C1_ / MESS::repmat(matrix(W_norms[, j]), ncol = k * p1)
           } else {
             C1_
           }
@@ -99,14 +99,14 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
           mdl0.fit <- RcppEigen::fastLm(
             X = cbind(
               "(Intercept)" = 1.0, # <----------- Remember the intercept
-              W / t(repmat(W_norms[, j], k, 1)),
+              W / MESS::repmat(matrix(W_norms[, j]), ncol = k),
               if (p2 > 0) {
-                C2 / t(repmat(W_norms[, j], p2, 1))
+                C2 / MESS::repmat(matrix(W_norms[, j]), ncol = p2)
               } else {
                 C2
               },
               #### Used to be `C1_null` and `C1_alt`. Removed assignment calls.
-              (C1_ / t(repmat(W_norms[, j], k * p1, 1)))[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
+              (C1_ / MESS::repmat(matrix(W_norms[, j]), ncol = k * p1))[, setdiff(1:(p1 * k), seq(d, k * p1, p1))]
             ),
             y = X_tilde[, j]
           )
@@ -176,20 +176,43 @@ init_means_vars <- function(C1_names, C2_names, feature_ids, source_ids, tau) {
   rownames(gammas_hat_pvals.joint) <- feature_ids
   colnames(gammas_hat_pvals.joint) <- C1_names
 
-  return(list("mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "gammas_hat" = gammas_hat, "deltas_hat" = deltas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "tau_hat" = tau_hat))
+  return(
+    list(
+      "mus_hat" = mus_hat,
+      "sigmas_hat" = sigmas_hat,
+      "gammas_hat" = gammas_hat,
+      "deltas_hat" = deltas_hat,
+      "deltas_hat_pvals" = deltas_hat_pvals,
+      "gammas_hat_pvals" = gammas_hat_pvals,
+      "gammas_hat_pvals.joint" = gammas_hat_pvals.joint,
+      "tau_hat" = tau_hat
+    )
+  )
 }
-
 
 #' @importFrom pracma repmat
 #' @importFrom pracma lsqlincon
 #' @importFrom nloptr nloptr
 #' @importFrom matrixStats colVars
-tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, C1.map, tau, vars.mle, constrain_mu, max_iters, parallel, num_cores) {
+tca.fit_means_vars <- function(
+    X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, C1.map, 
+    tau, vars.mle, constrain_mu, max_iters, parallel, num_cores
+  ) {
   flog.debug("Starting function 'tca.fit_means_vars'...")
 
-  config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
-  nloptr_opts <- list("algorithm" = config[["nloptr_opts_algorithm"]], "xtol_rel" = config[["nloptr_opts_xtol_rel"]], "print_level" = config[["nloptr_opts_print_level"]], "check_derivatives" = config[["nloptr_opts_check_derivatives"]])
-
+  config <- config::get(
+    file = system.file("extdata", "config.yml", package = "TCA"),
+    use_parent = FALSE
+  )
+  
+  nloptr_opts <-
+    list(
+      "algorithm" = config[["nloptr_opts_algorithm"]],
+      "xtol_rel" = config[["nloptr_opts_xtol_rel"]],
+      "print_level" = config[["nloptr_opts_print_level"]],
+      "check_derivatives" = config[["nloptr_opts_check_derivatives"]]
+    )
+  
   n <- nrow(X)
   m <- ncol(X)
   k <- ncol(W)
@@ -198,7 +221,7 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
 
   C1_ <- calc_C1_W_interactions(W, C1)
 
-  cl <- if (parallel) init_cluster(num_cores) else NULL
+  cl <- if (parallel) {init_cluster(num_cores)} else { NULL }
 
   const <- -n * log(2 * pi)
   W_squared <- W**2
@@ -206,7 +229,7 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
 
   ll_prev <- -Inf
   # Perform an alternative optimization of the means (mus, deltas, gammas) and variances (sigmas and tau)
-  for (iter in 1:max_iters) {
+  for (iter in seq_len(max_iters)) {
     flog.info("Iteration %s out of %s internal iterations...", iter, max_iters)
 
     # (1) Estimate the means (mus, deltas, gammas)
@@ -231,9 +254,9 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
       # Use the following for getting initial estimates of mus, deltas, gammas; under the assumptions that tau=0 and sigmas_{1j},...,sigmas_{kj} for each j.
       W_norms <- rowSums(W**2)**0.5
       # Since W_norms is the same for all features in this case can already calculate the following quantities
-      W_tilde <- W / t(repmat(W_norms, k, 1))
-      C1_tilde <- if (p1 > 0) C1_ / t(repmat(W_norms, k * p1, 1)) else C1_
-      C2_tilde <- if (p2 > 0) C2 / t(repmat(W_norms, p2, 1)) else C2
+      W_tilde <- W / MESS::repmat(matrix(W_norms), ncol = k)
+      C1_tilde <- if (p1 > 0) {C1_ / MESS::repmat(matrix(W_norms), ncol = k * p1)} else {C1_}
+      C2_tilde <- if (p2 > 0) {C2 / MESS::repmat(matrix(W_norms), ncol = p2)} else {C2}
     } else {
       flog.debug("Calculate W_norms")
       W_norms <- (tcrossprod(W**2, sigmas_hat**2) + tau_hat**2)**0.5
@@ -250,9 +273,9 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
       res <- pblapply(seq_len(m), function(j) {
         lsqlincon(
           cbind(
-            W / t(repmat(W_norms[, j], k, 1)),
-            if (p2 > 0) C2 / t(repmat(W_norms[, j], p2, 1)) else C2,
-            if (p1 > 0) C1_ / t(repmat(W_norms[, j], k * p1, 1)) else C1_
+            W / MESS::repmat(matrix(W_norms[, j]), ncol = k),
+            if (p2 > 0) {C2 / MESS::repmat(matrix(W_norms[, j]), ncol = p2)} else {C2},
+            if (p1 > 0) {C1_ / MESS::repmat(matrix(W_norms[, j]), ncol = k * p1)} else {C1_}
           ),
           X_tilde[, j],
           lb = lb, ub = ub
@@ -267,7 +290,6 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
       gammas_hat[j, seq(1, k * p1, length = k * p1)] <- res[[j]][seq(k + p2 + 1, k + p2 + p1 * k, length = p1 * k)]
     }
 
-
     # (2) Estimate the variances (sigmas, tau)
 
     # Calculate some quantities that will be repeatedly used throughout the optimization in this step
@@ -279,7 +301,8 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
         flog.debug("Get initial estimates of sigmas")
         row_names <- rownames(sigmas_hat)
         col_names <- colnames(sigmas_hat)
-        sigmas_hat <- t(repmat((colVars(X) / k)**0.5, k, 1))
+        # sigmas_hat <- t(repmat((colVars(X) / k)**0.5, k, 1))
+        sigmas_hat <- MESS::repmat(matrix((colVars(X) / k)**0.5), ncol = k)
         rownames(sigmas_hat) <- row_names
         colnames(sigmas_hat) <- col_names
       }
@@ -288,11 +311,18 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
       flog.debug("Estimate sigmas.")
       lb <- numeric(k) + config[["min_sd"]]
       ub <- numeric(k) + Inf
-      if (parallel) clusterExport(cl, c("lb", "ub", "n", "k", "U", "const", "W_squared", "sigmas_hat", "tau_hat", "nloptr_opts", "minus_log_likelihood_sigmas"), envir = environment())
+      if (parallel) {
+        clusterExport(cl, c(
+          "lb", "ub", "n", "k", "U", "const", "W_squared", "sigmas_hat",
+          "tau_hat", "nloptr_opts", "minus_log_likelihood_sigmas"
+        ), envir = environment())
+      }
       res <- pblapply(seq_len(m), function(j) {
         nloptr(
           x0 = sigmas_hat[j, ],
-          eval_f = function(x, U_j, W_squared, const, tau_hat) minus_log_likelihood_sigmas(x, U_j, W_squared, const, tau_hat),
+          eval_f = function(x, U_j, W_squared, const, tau_hat) {
+            minus_log_likelihood_sigmas(x, U_j, W_squared, const, tau_hat)
+          },
           lb = lb,
           ub = ub,
           opts = nloptr_opts,
@@ -314,7 +344,9 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
         ub <- Inf
         tau_hat <- nloptr(
           x0 = tau_hat,
-          eval_f = function(x, U, W_squared, sigmas_hat, const) minus_log_likelihood_tau(U, W_squared, sigmas_hat, const, x),
+          eval_f = function(x, U, W_squared, sigmas_hat, const) {
+            minus_log_likelihood_tau(U, W_squared, sigmas_hat, const, x)
+          },
           lb = lb,
           ub = ub,
           opts = nloptr_opts,
@@ -337,10 +369,13 @@ tca.fit_means_vars <- function(X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_ha
       }
       if (parallel) clusterExport(cl, c("lb", "U", "W_squared_", "lsqlincon", "V", "n"), envir = environment())
       res <- pblapply(seq_len(m), function(j) {
-        x <- W_squared_ / t(repmat(V[, j], ncol(W_squared_), 1))
-        # For numeric stability, normalize the design matrix and adjust the final estimats accordingly
+        # x <- W_squared_ / t(repmat(V[, j], ncol(W_squared_), 1))
+        x <- W_squared_ / MESS::repmat(V[, j, drop = FALSE], ncol = ncol(W_squared_))
+        
+        # For numeric stability, normalize the design matrix and adjust the final estimates accordingly
         norms <- (colSums(x**2))**0.5
-        x <- x / repmat(norms, n, 1)
+        # x <- x / repmat(norms, n, 1)
+        x <- x / MESS::repmat(matrix(norms, nrow = 1), nrow = n)
         lsqlincon(x, U[, j] / V[, j], lb = lb * norms) / norms
       }, cl = cl)
       tau_squared_hat <- 0
@@ -426,7 +461,19 @@ calc_C1_W_interactions <- function(W, C1) {
   k <- ncol(W)
   p1 <- ncol(C1)
   if (p1) {
-    return(hadamard.prod(Reshape(Reshape(apply(W, 2, function(v) repmat(v, 1, p1)), n * p1 * k, 1), n, p1 * k), repmat(C1, 1, k)))
+    return(
+    hadamard.prod(
+      Reshape(
+        Reshape(
+          # apply(W, 2, function(v) {repmat(v, 1, p1)}), n * p1 * k, 1
+          apply(W, 2, function(v) {MESS::repmat(matrix(v, nrow = 1), nrow = 1, ncol = p1)}), 
+          n * p1 * k, 1
+          ), n, p1 * k
+        ),
+      # repmat(C1, 1, k)
+      MESS::repmat(C1, nrow = 1, ncol = k)
+      )
+    )
   } else {
     return(matrix(0, n, 0))
   }
@@ -467,7 +514,8 @@ minus_log_likelihood_sigmas <- function(sigmas, U_j, W_squared, const, tau) {
   V_squared <- V**2
   return(list(
     "objective" = -0.5 * (const - sum(log(V)) - sum(U_j / V)),
-    "gradient" = -(colSums(W_squared * repmat(sigmas, n, 1) * t(repmat(U_j, k, 1)) / repmat(V_squared, 1, k)) - colSums(W_squared * repmat(sigmas, n, 1) / repmat(V, 1, k)))
+    "gradient" = -(colSums(W_squared * repmat(sigmas, n, 1) * t(repmat(U_j, k, 1)) / 
+                             repmat(V_squared, 1, k)) - colSums(W_squared * repmat(sigmas, n, 1) / repmat(V, 1, k)))
   ))
 }
 

@@ -36,8 +36,8 @@ load_all()
 ```{r setup, eval = FALSE}
 # Simulate the data
 set.seed(1234)
-# data <- test_data(20, 10000, 6, 1, 1, 0.01)
-# tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+data <- test_data(20, 10000, 6, 1, 1, 0.01)
+tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 lapply(data, dim)
 
 set.seed(1234)
@@ -181,7 +181,11 @@ faster at the current dimension.
 use_package("MESS")
 ```
 
-* Replace this pattern `repmat(W_norms[, j],` with `MESS::repmat(matrix(W_norms[, j], nrow = 1),`
+* Replace a bunch of `t(repmat ...)` with `MESS::repmat` to get rid of a t()
+call and use the more efficient `MESS::repmat()` call.  
+
+## removing memory consuming `<-` calls
+* Check for memory consuming `<-` calls
 
 # Test
 ## Did results changed?
@@ -296,29 +300,56 @@ mdl1.fit <- fastLm.mdl0.fit
 
 ## repmat
 ```{r}
-# saveRDS(list(a = W_norms[, j], n = k, m = 1), "assets/repmat_optimize.rds")
+# tca.fit
+# saveRDS(list(a = W_norms[, j], n = k, m = 1), "assets/repmat_1imize.rds")
 # stop()
-
-repmat_opt <- readRDS("assets/repmat_optimize.rds")
+repmat_1 <- readRDS("assets/repmat_optimize.rds")
 waldo::compare(
-  t(repmat(repmat_opt$a, repmat_opt$n, repmat_opt$m)),
-  MESS::repmat(matrix(repmat_opt$a), repmat_opt$m, repmat_opt$n)
+  t(repmat(repmat_1$a, repmat_1$n, repmat_1$m)),
+  MESS::repmat(matrix(repmat_1$a), repmat_1$m, repmat_1$n)
 )
+
+t(repmat(repmat_1$a, repmat_1$n, repmat_1$m))
+MESS::repmat(matrix(repmat_1$a), ncol = repmat_1$n)
 waldo::compare(
-  pracma::repmat(repmat_opt$a, 1000, 1),
-  MESS::repmat(matrix(repmat_opt$a, nrow = 1), 1000, 1)
+  pracma::repmat(repmat_1$a, 1000, 1),
+  MESS::repmat(matrix(repmat_1$a, nrow = 1), 1000, 1)
 )
+```
 
-microbenchmark::microbenchmark(
-  t(repmat(repmat_opt$a, repmat_opt$n, repmat_opt$m)),
-  MESS::repmat(matrix(repmat_opt$a, nrow = 1), 1000, 1),
-  times = 1000
+```{r}
+# tca.fit_means_vars
+# saveRDS(
+#   list(
+#     W_norms = W_norms,
+#     X_tilde = W_tilde,
+#     C1_tilde = C1_tilde,
+#     C2_tilde = C2_tilde
+#   ),
+#   "assets/repmat_optimize2.rds"
+# )
+# stop()
+repmat_2 <- readRDS("assets/repmat_optimize2.rds")
+waldo::compare(
+  apply(repmat_2$X_tilde, 2, function(v) {repmat(v, 1, 3)}),
+  apply(repmat_2$X_tilde, 2, function(v) {MESS::repmat(matrix(v), ncol = 3)})
 )
+```
 
-microbenchmark::microbenchmark(
-  pracma::repmat(repmat_opt$a, 1, 1000),
-  MESS::repmat(matrix(repmat_opt$a, nrow = 1), 1, 1000),
-  times = 1000
-)
+```{r}
+# minus_log_likelihood_sigmas
+# saveRDS(
+#   list(
+#     W_squared = W_squared,
+#     sigmas = sigmas,
+#     n = n,
+#     U_j = U_j,
+#     V_squared = V_squared,
+#     V = V,
+#     k = k
+#   ),
+#   "assets/repmat_optimize3.rds"
+# )
+# stop()
 ```
 
