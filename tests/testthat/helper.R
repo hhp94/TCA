@@ -32,7 +32,16 @@ run_ewas <- function(X, W, tca.mdl, yfile, test, fast_mode = FALSE) {
   return(pvals)
 }
 
+# Check if values are close within tolerance
 near <- function(x, y, tol = .Machine$double.eps^0.5) {
-  # FROM DPLYR PACKAGE
+  # FROM dplyr PACKAGE
   abs(x - y) < tol
 }
+
+# For comparing fitted values of tca runs
+compare_fit_exact <- function(o, n) { all(sapply(names(o), \(x) {
+    all(near(o[[x]], n[[x]]))
+  }))
+}
+
+# compare_fit_corr <- 1 # Compare correlation of params instead of actual value

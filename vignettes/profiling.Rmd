@@ -10,6 +10,7 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
+  eval = FALSE,
   comment = "#>"
 )
 ```
@@ -37,7 +38,7 @@ load_all()
 # Simulate the data
 set.seed(1234)
 data <- test_data(20, 10000, 6, 1, 1, 0.01)
-tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, vars.mle = TRUE)
 lapply(data, dim)
 
 set.seed(1234)
@@ -184,6 +185,30 @@ use_package("MESS")
 * Replace a bunch of `t(repmat ...)` with `MESS::repmat` to get rid of a t()
 call and use the more efficient `MESS::repmat()` call.  
 
+* For `vars.mle = TRUE`, carefully reproduce the gradient calculation and replace
+with `MESS::repmat()` as well as removing some repeated calculations.  
+```{r, eval = FALSE}
+# Before
+return(list(
+  "objective" = -0.5 * (const - sum(log(V)) - sum(U_j / V)),
+  "gradient" = -(colSums(W_squared * repmat(sigmas, n, 1) * t(repmat(U_j, k, 1)) /
+    repmat(V_squared, 1, k)) - colSums(W_squared * repmat(sigmas, n, 1) / repmat(V, 1, k)))
+))
+```
+
+```{r}
+# After
+W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = n, 1)
+return(list(
+  "objective" = -0.5 * (const - sum(log(V)) - sum(U_j / V)),
+  "gradient" = -(
+    colSums(W_squared_sig * MESS::repmat(matrix(U_j), ncol = k) /
+      MESS::repmat(V_squared, 1, ncol = k)) -
+      colSums(W_squared_sig / MESS::repmat(V, 1, ncol = k))
+  )
+))
+```
+
 ## removing memory consuming `<-` calls
 * Check for memory consuming `<-` calls
 
@@ -299,9 +324,10 @@ mdl1.fit <- fastLm.mdl0.fit
 ```
 
 ## repmat
+### tca.fit
 ```{r}
 # tca.fit
-# saveRDS(list(a = W_norms[, j], n = k, m = 1), "assets/repmat_1imize.rds")
+# saveRDS(list(a = W_norms[, j], n = k, m = 1), "assets/repmat_optimize.rds")
 # stop()
 repmat_1 <- readRDS("assets/repmat_optimize.rds")
 waldo::compare(
@@ -317,6 +343,7 @@ waldo::compare(
 )
 ```
 
+### tca.fit_means_vars
 ```{r}
 # tca.fit_means_vars
 # saveRDS(
@@ -331,25 +358,87 @@ waldo::compare(
 # stop()
 repmat_2 <- readRDS("assets/repmat_optimize2.rds")
 waldo::compare(
-  apply(repmat_2$X_tilde, 2, function(v) {repmat(v, 1, 3)}),
-  apply(repmat_2$X_tilde, 2, function(v) {MESS::repmat(matrix(v), ncol = 3)})
+  apply(repmat_2$X_tilde, 2, function(v) {
+    repmat(v, 1, 3)
+  }),
+  apply(repmat_2$X_tilde, 2, function(v) {
+    MESS::repmat(matrix(v), ncol = 3)
+  })
 )
 ```
 
+### minus_log_likelihood_sigmas
 ```{r}
 # minus_log_likelihood_sigmas
 # saveRDS(
 #   list(
-#     W_squared = W_squared,
-#     sigmas = sigmas,
-#     n = n,
-#     U_j = U_j,
-#     V_squared = V_squared,
-#     V = V,
-#     k = k
+#     w_i_rep = w_i_rep,
+#     sigmas_squared = sigmas_squared,
+#     V_rep = V_rep,
+#     mus = mus,
+#     C_tilde = C_tilde,
+#     U_i = U_i,
+#     k = k,
+#     V_rep = V_rep,
+#     U_i_squared = U_i_squared,
+#     V = V
 #   ),
-#   "assets/repmat_optimize3.rds"
+#   "assets/repmat_optimize4.rds"
 # )
 # stop()
+
+repmat_3 <- readRDS("assets/repmat_optimize3.rds")
+
+for (i in names(repmat_3)) {
+  assign(i, repmat_3[[i]])
+}
+
+gradient <- -(
+  colSums(
+    W_squared * pracma::repmat(sigmas, n, 1) * t(pracma::repmat(U_j, k, 1)) / pracma::repmat(V_squared, 1, k)
+  ) - colSums(
+    W_squared * pracma::repmat(sigmas, n, 1) / pracma::repmat(V, 1, k)
+  )
+)
+
+gradient2 <- -(
+  colSums(
+    (
+      W_squared *
+        MESS::repmat(matrix(sigmas, nrow = 1), nrow = n, 1) *
+        MESS::repmat(matrix(U_j), ncol = k)
+    ) /
+      MESS::repmat(V_squared, 1, ncol = k)
+  ) -
+    colSums(
+      (
+        W_squared *
+          MESS::repmat(matrix(sigmas, nrow = 1), nrow = n, 1)
+      ) /
+        MESS::repmat(V, 1, ncol = k)
+    )
+)
+
+W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = n, 1)
+
+gradient3 <- -(
+  colSums(
+    (
+      W_squared_sig *
+        MESS::repmat(matrix(U_j), ncol = k)
+    ) /
+      MESS::repmat(V_squared, 1, ncol = k)
+  ) -
+    colSums(
+      (
+        W_squared_sig
+      ) /
+        MESS::repmat(V, 1, ncol = k)
+    )
+)
+
+waldo::compare(gradient, gradient2)
+waldo::compare(gradient, gradient3)
 ```
 
+### minus_log_likelihood_w

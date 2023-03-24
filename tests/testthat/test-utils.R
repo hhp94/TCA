@@ -1,11 +1,7 @@
-test_that("summary_fastLm ", {
+test_that("fastLm_ftest ", {
   n <- 10000
   p <- 10
   p_null <- 5
-
-  near <- function(x, y, tol = .Machine$double.eps^0.5) {
-    abs(x - y) < tol
-  }
 
   diff <- replicate(100, {
     y <- rnorm(n)

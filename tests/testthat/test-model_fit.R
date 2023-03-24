@@ -1,35 +1,38 @@
-test_that("tca generated the same result as the fixture created in 1.2.1", {
+test_that("compare to TCA 1.2.1 fit, typical use", {
   n_test <- 2 # out of maximum number of simulation time
-  data <- readRDS(test_path("fixtures", "exp1_simdata.rds"))[seq_len(n_test), ]
-  fit_df <- readRDS(test_path("fixtures", "exp1_simdata_fit_1_2_1.rds"))[seq_len(n_test), ]
-
+  data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))[seq_len(n_test), ]
+  exp_1_df <- readRDS(test_path("fixtures", "sim1_exp1_fit_1_2_1.rds"))[seq_len(n_test), ]
+  
   set.seed(unique(data$seed))
 
-  fit_df$new_fit <- lapply(
+  exp_1_df$new_fit <- lapply(
     data$df,
-    \(d) {
-      tca(
-        X = d$X,
-        W = d$W,
-        C1 = d$C1,
-        C2 = d$C2
-      )
-    }
+    \(d) { tca(X = d$X, W = d$W, C1 = d$C1, C2 = d$C2)}
   )
 
-  compare_fit <- function(o, n) {
-    all(sapply(names(o), \(x) {
+  exp_1_df$results <- purrr::map2_lgl(exp_1_df$fit_1_2_1, exp_1_df$new_fit, compare_fit_exact)
+  expect_true(all(exp_1_df$results))
+})
+
+test_that("compare to TCA 1.2.1 fit, vars.mle = TRUE", {
+  n_test <- 2 # out of maximum number of simulation time
+  data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))[seq_len(n_test), ]
+  exp_2_df <- readRDS(test_path("fixtures", "sim1_exp2_fit_1_2_1.rds"))[seq_len(n_test), ]
+  
+  set.seed(unique(data$seed))
+  exp_2_df$new_fit <- lapply(
+    data$df,
+    \(d) { tca(X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, vars.mle = TRUE)}
+  )
+  
+  compare_fit_exact <- function(o, n) { all(sapply(names(o), \(x) {
       all(near(o[[x]], n[[x]]))
     }))
   }
-
-  fit_df$results <- purrr::map2_lgl(
-    fit_df$fit_1_2_1,
-    fit_df$new_fit,
-    compare_fit
-  )
-
-  expect_true(all(fit_df$results))
+  
+  # compare_fit_corr <- 1 # Compare correlation of params instead of actual value
+  exp_2_df$results <- purrr::map2_lgl(exp_2_df$fit_1_2_1, exp_2_df$new_fit, compare_fit_exact)
+  expect_true(all(exp_2_df$results))
 })
 
 test_that("Verify that p-values are not returned for gamma and delta of constrain_mu == TRUE", {

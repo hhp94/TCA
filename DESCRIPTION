@@ -33,7 +33,7 @@ Suggests:
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
-    tibble
+    dplyr
 URL: https://www.nature.com/articles/s41467-019-11052-9
 BugReports: https://github.com/cozygene/TCA/issues
 VignetteBuilder: knitr
