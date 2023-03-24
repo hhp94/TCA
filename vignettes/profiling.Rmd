@@ -20,11 +20,16 @@ knitr::opts_chunk$set(
 a moderately sized (400,000 CpGs * 1000 Samples * 6 Cell Types, vars.mle = FALSE)
 couldn't converge after 12 hours and hit out of memory error with 120GB of RAM.
 * This fork is created to profile the performance of TCA and see if there are 
-bottlenecks we can resolve.  
+"low hanging fruit" bottlenecks we can resolve.  
 
-# Changelog
-* Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`
+# Changelog 
+[23/03/23]
+* Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`  
 * Added `fastLM_ftest()` to `./R/utils.R` to calculate partial f-tests.  
+[23/03/24]
+* Replaced all the `pracma::repmat()` calls with `MESS::repmat()`
+calls outside of the `tcareg()` related functions. This shall be tackled later.  
+* Added test for no result change to ver 1.2.1 for `refit_W()`.  
 
 ```{r setup, eval = FALSE}
 library(profvis) # Profiling tool
@@ -34,11 +39,12 @@ near <- dplyr::near
 load_all()
 ```
 
+# Profiling
 ```{r setup, eval = FALSE}
 # Simulate the data
 set.seed(1234)
-data <- test_data(20, 10000, 6, 1, 1, 0.01)
-tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, vars.mle = TRUE)
+# data <- test_data(20, 10000, 6, 1, 1, 0.01)
+# tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 lapply(data, dim)
 
 set.seed(1234)
@@ -60,14 +66,12 @@ sequential
 * The sequential run took 7' to be done
 * We see that in `model_fit.R/tca_fit.R`, r is spending 
   + High peak memory and decent amount of time to call `tca.fit_means_vars`. 
-  This is the internal loop convergence of TCA. This is probably what 
+  This is the internal loop convergence test of TCA. This is probably what 
   bottle necked the loop in parallel mode because the high memory overhead.  
   + High peak memory and a lot of time to call `lm()` and subsequently 
   `model.frame.default()`  
-  + The `anova.lm()` call to compare the model with a null model is also taking
-  a significant amount time. This should be unnecessary since the model it is
-  comparing to is a null model, the F statistics is already calculated in the 
-  `summary.lm()` object  
+  + The `anova.lm()` call to perform partial F tests is also taking a 
+  significant amount time.  
 * Let's try to replace the `data.frame()` call with a straight `cbind()` call to 
 create a X matrix. Then we can use `RcppEigen::fastLm()` to directly call 
 the data matrix and the vector y.  
@@ -76,6 +80,10 @@ the data matrix and the vector y.
   make this trade off. Other issues such as full rank matrix should still cause 
   errors. We can create a test case for this.  
   + Have to implement an `anova()` method for `RcppEigen::fastLm()`.  
+* The `pracma::repmat()` calls are also taking a good amount of time. Looks like
+the implementation in `{MESS}` accomplish the same thing but calls C code 
+directly so it should be faster. This change would add up since `pracma::repmat()` 
+is called alot. 
 
 # Replacing codes
 * Warning, this might be unsafe
@@ -176,8 +184,8 @@ for (d in 1:p1) {
 ```
 
 ## repmat
-* repmat is taking a decent chunk out of the time. `MESS::repmat` is about 50%
-faster at the current dimension.  
+* `pracma::repmat()` is taking a decent chunk out of the time. 
+`MESS::repmat` is about 50% faster at the current dimensions.  
 ```{r}
 use_package("MESS")
 ```
@@ -187,6 +195,8 @@ call and use the more efficient `MESS::repmat()` call.
 
 * For `vars.mle = TRUE`, carefully reproduce the gradient calculation and replace
 with `MESS::repmat()` as well as removing some repeated calculations.  
+
+### minus_log_likelihood_sigmas
 ```{r, eval = FALSE}
 # Before
 return(list(
@@ -207,6 +217,36 @@ return(list(
       colSums(W_squared_sig / MESS::repmat(V, 1, ncol = k))
   )
 ))
+```
+
+### minus_log_likelihood_w
+```{r}
+# Before
+V_rep <- repmat(V, 1, k)
+U_i <- tcrossprod(mus, w_i) + crossprod_deltas_c2_i + tcrossprod(gammas, c1_i_) - t(x_i)
+U_i_squared <- U_i**2
+w_i_rep <- repmat(w_i, m, 1)
+fval <- -0.5 * (const - sum(log(V)) - sum(U_i_squared / V))
+gval <- colSums(w_i_rep * sigmas_squared / V_rep) + colSums(((mus + C_tilde) * repmat(U_i, 1, k) * V_rep - w_i_rep * sigmas_squared * repmat(U_i_squared, 1, k)) / repmat(V**2, 1, k))
+return(list("objective" = fval, "gradient" = gval))
+```
+
+```{r}
+# After
+V_rep <- MESS::repmat(V, 1, k)
+U_i <- tcrossprod(mus, w_i) + crossprod_deltas_c2_i + tcrossprod(gammas, c1_i_) - t(x_i)
+U_i_squared <- U_i**2
+w_i_rep <- MESS::repmat(matrix(w_i, nrow = 1), m, 1)
+fval <- -0.5 * (const - sum(log(V)) - sum(U_i_squared / V))
+w_i_rep_sig <- w_i_rep * sigmas_squared
+gval <-
+  colSums(w_i_rep_sig / V_rep) +
+  colSums((
+    (mus + C_tilde) * MESS::repmat(U_i, 1, k) * V_rep -
+      w_i_rep_sig * MESS::repmat(U_i_squared, 1, k)
+  ) /
+    MESS::repmat(V**2, 1, k))
+return(list("objective" = fval, "gradient" = gval))
 ```
 
 ## removing memory consuming `<-` calls
@@ -249,7 +289,7 @@ plan(sequential)
 # waldo::compare(fit_1_2_1_results$deltas_hat_pvals, tca.mdl$deltas_hat_pvals)
 ```
 
-## Change 1 and 2
+## fastLm
 1 and 2 has to be tested concurrently
 ```{r}
 data <- test_data(20, 10000, 6, 1, 1, 0.01)
@@ -370,21 +410,6 @@ waldo::compare(
 ### minus_log_likelihood_sigmas
 ```{r}
 # minus_log_likelihood_sigmas
-# saveRDS(
-#   list(
-#     w_i_rep = w_i_rep,
-#     sigmas_squared = sigmas_squared,
-#     V_rep = V_rep,
-#     mus = mus,
-#     C_tilde = C_tilde,
-#     U_i = U_i,
-#     k = k,
-#     V_rep = V_rep,
-#     U_i_squared = U_i_squared,
-#     V = V
-#   ),
-#   "assets/repmat_optimize4.rds"
-# )
 # stop()
 
 repmat_3 <- readRDS("assets/repmat_optimize3.rds")
@@ -442,3 +467,64 @@ waldo::compare(gradient, gradient3)
 ```
 
 ### minus_log_likelihood_w
+```{r}
+set.seed(1234)
+data <- test_data(20, 10000, 6, 1, 1, 0.01)
+tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, refit_W = TRUE)
+```
+
+```{r}
+# saveRDS(
+#   list(
+#     w_i = w_i,
+#     w_i_rep = w_i_rep,
+#     sigmas_squared = sigmas_squared,
+#     V_rep = V_rep,
+#     mus = mus,
+#     C_tilde = C_tilde,
+#     U_i = U_i,
+#     k = k,
+#     V_rep = V_rep,
+#     U_i_squared = U_i_squared,
+#     V = V
+#   ),
+#   "assets/repmat_optimize4.rds"
+# )
+# stop()
+
+repmat_4 <- readRDS("assets/repmat_optimize4.rds")
+
+for (i in names(repmat_4)) {
+  assign(i, repmat_4[[i]])
+}
+
+V_rep2 <- MESS::repmat(V, 1, k)
+V_rep <- repmat(V, 1, k)
+waldo::compare(V_rep2, V_rep)
+
+w_i_rep2 <- MESS::repmat(matrix(w_i, nrow = 1), m, 1)
+w_i_rep <- repmat(w_i, m, 1)
+waldo::compare(w_i_rep2, w_i_rep)
+
+gval <-
+  colSums(w_i_rep * sigmas_squared / V_rep) +
+  colSums(
+    (
+      (mus + C_tilde) * repmat(U_i, 1, k) * V_rep -
+        w_i_rep * sigmas_squared * repmat(U_i_squared, 1, k)
+    ) /
+      repmat(V**2, 1, k)
+  )
+
+w_i_rep_sig <- w_i_rep * sigmas_squared
+gval2 <-
+  colSums(w_i_rep_sig / V_rep) +
+  colSums((
+    (mus + C_tilde) * MESS::repmat(U_i, 1, k) * V_rep -
+      w_i_rep_sig * MESS::repmat(U_i_squared, 1, k)
+  ) /
+    MESS::repmat(V**2, 1, k))
+
+waldo::compare(gval, gval2)
+```
+

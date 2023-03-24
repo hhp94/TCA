@@ -38,8 +38,14 @@ near <- function(x, y, tol = .Machine$double.eps^0.5) {
   abs(x - y) < tol
 }
 
+# Wrapper for which sim object to get for reproducing 1.2.1 fits
+get_fixture <- function(sim) {
+  readRDS(test_path("fixtures", sim))
+}
+
 # For comparing fitted values of tca runs
-compare_fit_exact <- function(o, n) { all(sapply(names(o), \(x) {
+compare_fit_exact <- function(o, n) {
+  all(sapply(names(o), \(x) {
     all(near(o[[x]], n[[x]]))
   }))
 }

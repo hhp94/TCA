@@ -3,6 +3,7 @@
 ## This result will be used to check if future changes modifies anything
 ## unexpectedly.
 
+library(furrr)
 warning("This shouldn't run in build test")
 use_package("furrr")
 use_package("dplyr", type = "Suggests")
@@ -26,23 +27,26 @@ data$seed <- my_seed
 saveRDS(data, test_path("fixtures", "sim1_simdata.rds"))
 
 # Scenario 1, typical use ----------------------------------------------
+data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
 fitted <- data[, which(names(data) == "id")] # Store fitted object
 
 set.seed(my_seed)
-library(furrr)
 plan(multisession, workers = 5)
 
 fitted$fit_1_2_1 <- future_map(
   data$df,
-  \(d) {tca( X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, verbose = FALSE) },
+  \(d) {
+    tca(X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, verbose = FALSE)
+  },
   .options = furrr_options(seed = TRUE, packages = "TCA"),
   .progress = TRUE
 )
 
 plan(sequential)
-saveRDS(fitted, test_path("fixtures", "sim1_exp1_fit_1_2_1.rds"))
+saveRDS(fitted, test_path("fixtures", "sim1_exp_1_fit_1_2_1.rds"))
 
 # Scenario 2, vars.mle = TRUE ----------------------------------------------
+data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
 fitted_mle <- data[, which(names(data) == "id")] # Store fitted object
 
 set.seed(my_seed)
@@ -50,10 +54,34 @@ plan(multisession, workers = 5)
 
 fitted_mle$fit_1_2_1 <- future_map(
   data$df,
-  \(d) {tca( X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, vars.mle = TRUE, verbose = FALSE) },
+  \(d) {
+    tca(X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, vars.mle = TRUE, verbose = FALSE)
+  },
   .options = furrr_options(seed = TRUE, packages = "TCA"),
   .progress = TRUE
 )
 
 plan(sequential)
-saveRDS(fitted_mle, test_path("fixtures", "sim1_exp2_fit_1_2_1.rds"))
+saveRDS(fitted_mle, test_path("fixtures", "sim1_exp_2_fit_1_2_1.rds"))
+
+# Scenario 3, refit_W = TRUE ----------------------------------------------
+data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
+fitted_refit_W <- data[, which(names(data) == "id")] # Store fitted object
+
+set.seed(my_seed)
+plan(multisession, workers = 5)
+
+fitted_refit_W$fit_1_2_1 <- future_map(
+  data$df,
+  \(d) {
+    tca(
+      X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, constrain_mu = TRUE,
+      refit_W = TRUE, refit_W.features = rownames(d$X), verbose = FALSE
+    )
+  },
+  .options = furrr_options(seed = TRUE, packages = "TCA"),
+  .progress = TRUE
+)
+
+plan(sequential)
+saveRDS(fitted_refit_W, test_path("fixtures", "sim1_exp_3_fit_1_2_1.rds"))

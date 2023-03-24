@@ -195,16 +195,15 @@ init_means_vars <- function(C1_names, C2_names, feature_ids, source_ids, tau) {
 #' @importFrom nloptr nloptr
 #' @importFrom matrixStats colVars
 tca.fit_means_vars <- function(
-    X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, C1.map, 
-    tau, vars.mle, constrain_mu, max_iters, parallel, num_cores
-  ) {
+    X, W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, C1.map,
+    tau, vars.mle, constrain_mu, max_iters, parallel, num_cores) {
   flog.debug("Starting function 'tca.fit_means_vars'...")
 
   config <- config::get(
     file = system.file("extdata", "config.yml", package = "TCA"),
     use_parent = FALSE
   )
-  
+
   nloptr_opts <-
     list(
       "algorithm" = config[["nloptr_opts_algorithm"]],
@@ -212,7 +211,7 @@ tca.fit_means_vars <- function(
       "print_level" = config[["nloptr_opts_print_level"]],
       "check_derivatives" = config[["nloptr_opts_check_derivatives"]]
     )
-  
+
   n <- nrow(X)
   m <- ncol(X)
   k <- ncol(W)
@@ -221,7 +220,11 @@ tca.fit_means_vars <- function(
 
   C1_ <- calc_C1_W_interactions(W, C1)
 
-  cl <- if (parallel) {init_cluster(num_cores)} else { NULL }
+  cl <- if (parallel) {
+    init_cluster(num_cores)
+  } else {
+    NULL
+  }
 
   const <- -n * log(2 * pi)
   W_squared <- W**2
@@ -255,8 +258,16 @@ tca.fit_means_vars <- function(
       W_norms <- rowSums(W**2)**0.5
       # Since W_norms is the same for all features in this case can already calculate the following quantities
       W_tilde <- W / MESS::repmat(matrix(W_norms), ncol = k)
-      C1_tilde <- if (p1 > 0) {C1_ / MESS::repmat(matrix(W_norms), ncol = k * p1)} else {C1_}
-      C2_tilde <- if (p2 > 0) {C2 / MESS::repmat(matrix(W_norms), ncol = p2)} else {C2}
+      C1_tilde <- if (p1 > 0) {
+        C1_ / MESS::repmat(matrix(W_norms), ncol = k * p1)
+      } else {
+        C1_
+      }
+      C2_tilde <- if (p2 > 0) {
+        C2 / MESS::repmat(matrix(W_norms), ncol = p2)
+      } else {
+        C2
+      }
     } else {
       flog.debug("Calculate W_norms")
       W_norms <- (tcrossprod(W**2, sigmas_hat**2) + tau_hat**2)**0.5
@@ -274,8 +285,16 @@ tca.fit_means_vars <- function(
         lsqlincon(
           cbind(
             W / MESS::repmat(matrix(W_norms[, j]), ncol = k),
-            if (p2 > 0) {C2 / MESS::repmat(matrix(W_norms[, j]), ncol = p2)} else {C2},
-            if (p1 > 0) {C1_ / MESS::repmat(matrix(W_norms[, j]), ncol = k * p1)} else {C1_}
+            if (p2 > 0) {
+              C2 / MESS::repmat(matrix(W_norms[, j]), ncol = p2)
+            } else {
+              C2
+            },
+            if (p1 > 0) {
+              C1_ / MESS::repmat(matrix(W_norms[, j]), ncol = k * p1)
+            } else {
+              C1_
+            }
           ),
           X_tilde[, j],
           lb = lb, ub = ub
@@ -371,7 +390,7 @@ tca.fit_means_vars <- function(
       res <- pblapply(seq_len(m), function(j) {
         # x <- W_squared_ / t(repmat(V[, j], ncol(W_squared_), 1))
         x <- W_squared_ / MESS::repmat(V[, j, drop = FALSE], ncol = ncol(W_squared_))
-        
+
         # For numeric stability, normalize the design matrix and adjust the final estimates accordingly
         norms <- (colSums(x**2))**0.5
         # x <- x / repmat(norms, n, 1)
@@ -462,16 +481,18 @@ calc_C1_W_interactions <- function(W, C1) {
   p1 <- ncol(C1)
   if (p1) {
     return(
-    hadamard.prod(
-      Reshape(
+      hadamard.prod(
         Reshape(
-          # apply(W, 2, function(v) {repmat(v, 1, p1)}), n * p1 * k, 1
-          apply(W, 2, function(v) {MESS::repmat(matrix(v, nrow = 1), nrow = 1, ncol = p1)}), 
-          n * p1 * k, 1
+          Reshape(
+            # apply(W, 2, function(v) {repmat(v, 1, p1)}), n * p1 * k, 1
+            apply(W, 2, function(v) {
+              MESS::repmat(matrix(v, nrow = 1), nrow = 1, ncol = p1)
+            }),
+            n * p1 * k, 1
           ), n, p1 * k
         ),
-      # repmat(C1, 1, k)
-      MESS::repmat(C1, nrow = 1, ncol = k)
+        # repmat(C1, 1, k)
+        MESS::repmat(C1, nrow = 1, ncol = k)
       )
     )
   } else {
@@ -512,10 +533,14 @@ minus_log_likelihood_sigmas <- function(sigmas, U_j, W_squared, const, tau) {
   n <- nrow(W_squared)
   V <- tcrossprod(W_squared, t(sigmas**2)) + tau**2
   V_squared <- V**2
+  W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = n, 1)
   return(list(
     "objective" = -0.5 * (const - sum(log(V)) - sum(U_j / V)),
-    "gradient" = -(colSums(W_squared * repmat(sigmas, n, 1) * t(repmat(U_j, k, 1)) / 
-                             repmat(V_squared, 1, k)) - colSums(W_squared * repmat(sigmas, n, 1) / repmat(V, 1, k)))
+    "gradient" = -(
+      colSums(W_squared_sig * MESS::repmat(matrix(U_j), ncol = k) /
+        MESS::repmat(V_squared, 1, ncol = k)) -
+        colSums(W_squared_sig / MESS::repmat(V, 1, ncol = k))
+    )
   ))
 }
 
@@ -533,12 +558,19 @@ minus_log_likelihood_w <- function(w_i, x_i, c1_i, mus, tau, gammas, const, C_ti
   m <- dim(mus)[1]
   c1_i_ <- calc_C1_W_interactions(w_i, c1_i)
   V <- tcrossprod(sigmas_squared, w_i**2) + tau**2
-  V_rep <- repmat(V, 1, k)
+  V_rep <- MESS::repmat(V, 1, k)
   U_i <- tcrossprod(mus, w_i) + crossprod_deltas_c2_i + tcrossprod(gammas, c1_i_) - t(x_i)
   U_i_squared <- U_i**2
-  w_i_rep <- repmat(w_i, m, 1)
+  w_i_rep <- MESS::repmat(matrix(w_i, nrow = 1), m, 1)
   fval <- -0.5 * (const - sum(log(V)) - sum(U_i_squared / V))
-  gval <- colSums(w_i_rep * sigmas_squared / V_rep) + colSums(((mus + C_tilde) * repmat(U_i, 1, k) * V_rep - w_i_rep * sigmas_squared * repmat(U_i_squared, 1, k)) / repmat(V**2, 1, k))
+  w_i_rep_sig <- w_i_rep * sigmas_squared
+  gval <-
+    colSums(w_i_rep_sig / V_rep) +
+    colSums((
+      (mus + C_tilde) * MESS::repmat(U_i, 1, k) * V_rep -
+        w_i_rep_sig * MESS::repmat(U_i_squared, 1, k)
+    ) /
+      MESS::repmat(V**2, 1, k))
   return(list("objective" = fval, "gradient" = gval))
 }
 
