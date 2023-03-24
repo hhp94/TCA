@@ -4,6 +4,7 @@
 ## unexpectedly.
 
 library(furrr)
+library(TCA)
 warning("This shouldn't run in build test")
 use_package("furrr")
 use_package("dplyr", type = "Suggests")
@@ -16,11 +17,11 @@ data <- dplyr::tibble(id = seq_len(n_dat)) # Store generated data
 # Simulation 1 ---------------------------------------------------------
 data$df <-
   list(
-    TCA::test_data(30, 2000, 3, 2, 2, 0.01, log_file = NULL),
-    TCA::test_data(30, 2000, 4, 1, 2, 0.01, log_file = NULL),
-    TCA::test_data(30, 2000, 4, 3, 2, 0.01, log_file = NULL),
-    TCA::test_data(30, 2000, 3, 2, 1, 0.01, log_file = NULL),
-    TCA::test_data(30, 2000, 3, 2, 1, 0.02, log_file = NULL)
+    TCA::test_data(25, 1000, 3, 2, 2, 0.01, log_file = NULL),
+    TCA::test_data(25, 1000, 4, 1, 2, 0.01, log_file = NULL),
+    TCA::test_data(25, 1000, 4, 3, 2, 0.01, log_file = NULL),
+    TCA::test_data(25, 1000, 3, 2, 1, 0.01, log_file = NULL),
+    TCA::test_data(25, 1000, 3, 2, 1, 0.02, log_file = NULL)
   )
 
 data$seed <- my_seed

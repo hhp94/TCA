@@ -299,7 +299,7 @@ fastLM_ftest <- function(rm, fm) {
 #   coef <- object$coefficients
 #   se   <- object$se
 #   tval <- coef / se
-#   
+#
 #   object$coefficients <- cbind(
 #     Estimate     = coef,
 #     "Std. Error" = se,
@@ -307,7 +307,7 @@ fastLM_ftest <- function(rm, fm) {
 #     "Pr(>|t|)"   = 2 * pt(-abs(tval), df =
 #                             object$df.residual)
 #   )
-#   
+#
 #   ## cf src/stats/R/lm.R and case with no weights and an intercept
 #   f <- object$fitted.values
 #   r <- object$residuals
@@ -318,7 +318,7 @@ fastLM_ftest <- function(rm, fm) {
 #   else
 #     sum(f ^ 2)
 #   rss <- sum(r ^ 2)
-#   
+#
 #   object$r.squared <- mss / (mss + rss)
 #   df.int <- if (object$intercept)
 #     1L

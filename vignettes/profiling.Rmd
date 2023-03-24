@@ -22,6 +22,7 @@ couldn't converge after 12 hours and hit out of memory error with 120GB of RAM.
 * This fork is created to profile the performance of TCA and see if there are 
 "low hanging fruit" bottlenecks we can resolve.  
 
+
 # Changelog 
 [23/03/23]
 * Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`  
@@ -40,27 +41,40 @@ load_all()
 ```
 
 # Profiling
-```{r setup, eval = FALSE}
+```{r setup, eval = FALSE} 
 # Simulate the data
 set.seed(1234)
-# data <- test_data(20, 10000, 6, 1, 1, 0.01)
+data <- test_data(100, 10000, 6, 1, 1, 0.01)
 # tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 lapply(data, dim)
 
 set.seed(1234)
 # Run the data sequentially first.
 # sequential <- profvis({
-#   tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+#   tca.mdl <-
+#     tca(
+#       X = data$X,
+#       W = data$W,
+#       C1 = data$C1,
+#       C2 = data$C2,
+#       parallel = TRUE,
+#       num_cores = 6L
+#     )
 # })
-# 
-# saveRDS(sequential, "./assets/sequential_n20_m1e5.rds")
-# use_build_ignore("./assets/sequential_n20_m1e5.rds")
-# use_git_ignore("./assets/sequential_n20_m1e5.rds")
+#
+# saveRDS(sequential, "./assets/parallel_modded_sequential_n100_m1e5.rds")
+# saveRDS(sequential, "./assets/modded_sequential_n100_m1e5.rds")
+# saveRDS(sequential, "./assets/1_2_1_sequential_n100_m1e5.rds")
 ```
 
 ```{r setup, eval = FALSE}
-sequential <- readRDS("./assets/sequential_n20_m1e5.rds")
-sequential
+seq_1_2_1 <- readRDS("./assets/1_2_1_sequential_n100_m1e5.rds")
+seq_modded <- readRDS("./assets/modded_sequential_n100_m1e5.rds")
+seq_parallel_modded <- readRDS("./assets/parallel_modded_sequential_n100_m1e5.rds")
+
+seq_1_2_1
+seq_modded
+seq_parallel_modded
 ```
 
 * The sequential run took 7' to be done
@@ -256,7 +270,16 @@ time to optimize sigma.
 that is used only once in the function to minimize overhead for `nloptr()`
 
 ## parallel
-
+* Let's think about the parallel.  
+* Looks like R is stopping and starting clusters multiple times.  
+  + Cluster is started twice. Once for the tca.fit_mean_vars and once for 
+  p-values of deltas and gammas.  
+  + RUNNING CLUSTER IS IN GENERALL MUCH SLOWER THAN SEQUENTIAL! This is probably
+  because of the overhead.
+  + Make sure to only run in sequential mode. But parallel over chunks of 
+  X matrix instead.  
+* Add a stop for if parallel and refit_W is FALSE. We can probably remove all
+the parallel to be honest and just run the codes over chunks of X.  
 ## removing memory consuming `<-` calls
 * Check for memory consuming `<-` calls
 
@@ -281,8 +304,12 @@ fitted$new_fit <- lapply(
   }
 )
 
-sapply(1:length(fitted$fit_1_2_1[[1]]),
-       \(x) {max(fitted$fit_1_2_1[[1]][[x]] - fitted$new_fit[[1]][[x]])})
+sapply(
+  1:length(fitted$fit_1_2_1[[1]]),
+  \(x) {
+    max(fitted$fit_1_2_1[[1]][[x]] - fitted$new_fit[[1]][[x]])
+  }
+)
 
 
 fitted$fit_1_2_1[[1]] - fitted$new_fit[[1]]
@@ -305,7 +332,9 @@ plan(sequential)
 ## fastLm
 1 and 2 has to be tested concurrently
 ```{r}
-data <- test_data(20, 10000, 6, 1, 1, 0.01)
+data <- test_data(30, 1000, 6, 1, 1, 0.01)
+C1_1 <- cbind(data$C1, data$C1)
+C2_1 <- cbind(data$C2, data$C2)
 tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 df <- readRDS("./assets/change_1.rds")
 X <- cbind("(Intercept)" = 1, df[, which(names(df) != "y")])
@@ -336,12 +365,11 @@ stopifnot(all(dplyr::near(deltas_gammas_hat_pvals, deltas_gammas_hat_pvals.1)))
 ```
 
 # Scrap
-## parallel
-* Let's think about the parallel.  
-* Looks like R is stopping and starting clusters multiple times.  
 ```{r}
+library(profvis)
 set.seed(1234)
-data <- test_data(250, 10000, 6, 3, 10, 0.01)
+data <- test_data(1000, 2000, 12, 3, 10, 0.01)
+
 # Sequential
 sim_1 <- profvis({
   tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
@@ -398,13 +426,37 @@ mdl1.fit <- fastLm.mdl0.fit
 set.seed(1234)
 data <- test_data(500, 5000, 6, 1, 1, 0.01)
 tca.mdl <-
-    tca(
-      X = data$X,
-      W = data$W,
-      C1 = data$C1,
-      C2 = data$C2
-    )
+  tca(
+    X = data$X,
+    W = data$W,
+    C1 = data$C1,
+    C2 = data$C2
+  )
 ```
+
+### Positive Definite
+```{r}
+X <- matrix(rnorm(100), ncol = 4)
+X <- cbind(X, X[, 1], X[, 2])
+X
+y <- rnorm(nrow(X))
+
+df <- as.data.frame(cbind(X, y))
+lm(y ~ ., data = df) |>
+  summary()
+
+library(RcppEigen)
+mdl1.fit <- fastLm(X = X, y = y)
+
+
+mdl1.coef <- summary(mdl1.fit)$coefficients
+# First row is always intercept. Sacrifice some code readability here
+# Sacrifice some code readability here by using -1 instead of
+## mdl1.coef[`which(rownames(mdl1.coef) != "(Intercept)")`, "Pr(>|t|)"]
+deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
+stopifnot("C1 is rank deficient" = !anyNA(deltas_gammas_hat_pvals))
+```
+
 
 ## repmat
 ### tca.fit
@@ -581,12 +633,12 @@ in the function to minimize overhead for `nloptr()`
 set.seed(1234)
 data <- test_data(200, 5000, 6, 1, 1, 0.01)
 tca.mdl <-
-    tca(
-      X = data$X,
-      W = data$W,
-      C1 = data$C1,
-      C2 = data$C2
-    )
+  tca(
+    X = data$X,
+    W = data$W,
+    C1 = data$C1,
+    C2 = data$C2
+  )
 
 sequential_vars.alt <- profvis({
   tca.mdl <-
@@ -627,7 +679,6 @@ saveRDS(sequential_vars.mle, "./assets/sequential_n200_m1e3_vars.mle.rds")
 ```{r}
 sequential_vars.mle <- readRDS("./assets/sequential_n200_m1e3_vars.mle.rds")
 sequential_vars.mle
-
 ```
 
 ### Rfast::colsums
@@ -650,6 +701,5 @@ microbenchmark::microbenchmark(
   Rfast::colsums(tm),
   matrixStats::colSums2(tm)
 )
-
 ```
 

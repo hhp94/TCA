@@ -56,26 +56,26 @@
 #' @export tca
 tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refit_W.features = NULL, refit_W.sparsity = 500, refit_W.sd_threshold = 0.02, tau = NULL, vars.mle = FALSE, constrain_mu = FALSE, parallel = FALSE, num_cores = NULL, max_iters = 10, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
-  
+
   flog.info("Starting tca...")
-  
+
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
-  
+
   # progress bar options
   op <- if (verbose) pboptions(nout = config$nout, type = config[["type"]]) else pboptions(nout = config$nout, type = "none")
-  
+
   X <- if (is.matrix(X)) X else as.matrix(X)
   W <- if (is.matrix(W)) W else as.matrix(W)
   C1 <- if (is.matrix(C1) | is.null(C1)) C1 else as.matrix(C1)
   C2 <- if (is.matrix(C2) | is.null(C2)) C2 else as.matrix(C2)
-  
+
   flog.info("Validating input...")
   tca.validate_input(X, W, C1, C1.map, C2, refit_W, refit_W.features, refit_W.sparsity, refit_W.sd_threshold, tau, constrain_mu, parallel, num_cores, max_iters, log_file, debug)
   if (is.null(C1)) C1 <- matrix(0, nrow = ncol(X), ncol = 0)
   if (is.null(C2)) C2 <- matrix(0, nrow = ncol(X), ncol = 0)
-  
+
   C1.map <- if (is.null(C1.map)) matrix(1, ncol(C1), ncol(W)) else C1.map
-  
+
   msg <- "Fitting the TCA model..."
   if (refit_W) {
     flog.info("Starting re-estimation of W...")
@@ -147,7 +147,7 @@ tcasub <- function(tca.mdl, features, log_file = "TCA.log", debug = FALSE, verbo
   flog.info("Starting tcasub...")
   tcasub.validate_input(tca.mdl, features, log_file, debug)
   flog.info("Finished tcasub.")
-  
+
   mus_hat <- as.matrix(tca.mdl[["mus_hat"]][features, , drop = F])
   sigmas_hat <- as.matrix(tca.mdl[["sigmas_hat"]][features, , drop = F])
   deltas_hat <- as.matrix(tca.mdl[["deltas_hat"]][features, , drop = F])
@@ -155,7 +155,7 @@ tcasub <- function(tca.mdl, features, log_file = "TCA.log", debug = FALSE, verbo
   deltas_hat_pvals <- if (is.null(tca.mdl[["deltas_hat_pvals"]])) NULL else as.matrix(tca.mdl[["deltas_hat_pvals"]][features, , drop = F])
   gammas_hat_pvals <- if (is.null(tca.mdl[["gammas_hat_pvals"]])) NULL else as.matrix(tca.mdl[["gammas_hat_pvals"]][features, , drop = F])
   gammas_hat_pvals.joint <- if (is.null(tca.mdl[["gammas_hat_pvals.joint"]])) NULL else as.matrix(tca.mdl[["gammas_hat_pvals.joint"]][features, , drop = F])
-  
+
   return(list("W" = tca.mdl[["W"]], "mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "tau_hat" = tca.mdl[["tau_hat"]], "deltas_hat" = deltas_hat, "gammas_hat" = gammas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "C1" = as.matrix(tca.mdl[["C1"]]), "C2" = as.matrix(tca.mdl[["C2"]])))
 }
 
@@ -187,19 +187,19 @@ tcasub <- function(tca.mdl, features, log_file = "TCA.log", debug = FALSE, verbo
 #' @export tensor
 tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
-  
+
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
-  
+
   flog.info("Validating input...")
   tensor.validate_input(X, scale, parallel, num_cores, log_file, debug)
-  
+
   # progress bar options
   op <- if (verbose) pboptions(nout = config$nout, type = config[["type"]]) else pboptions(nout = config$nout, type = "none")
-  
+
   flog.info("Starting tensor for estimating Z...")
-  
+
   X <- if (is.matrix(X)) X else as.matrix(X)
-  
+
   W <- tca.mdl[["W"]]
   mus_hat <- tca.mdl[["mus_hat"]]
   sigmas_hat <- tca.mdl[["sigmas_hat"]]
@@ -208,7 +208,7 @@ tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL
   gammas_hat <- tca.mdl[["gammas_hat"]]
   C1 <- tca.mdl[["C1"]]
   C2 <- tca.mdl[["C2"]]
-  
+
   return(estimate_Z(t(X), W, mus_hat, sigmas_hat, tau_hat, C2, deltas_hat, C1, gammas_hat, scale, parallel, num_cores))
 }
 
@@ -296,22 +296,22 @@ tensor <- function(X, tca.mdl, scale = FALSE, parallel = FALSE, num_cores = NULL
 #'
 tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null_model = NULL, alternative_model = NULL, save_results = FALSE, fast_mode = TRUE, output = "TCA", sort_results = FALSE, parallel = FALSE, num_cores = NULL, log_file = "TCA.log", features_metadata = NULL, debug = FALSE, verbose = TRUE) {
   start_logger(log_file, debug, verbose)
-  
+
   flog.info("Starting tcareg...")
-  
+
   config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
-  
+
   # set options for the progress bars
   op <- if (verbose) pboptions(nout = config$nout, type = config[["type"]]) else pboptions(nout = config$nout, type = "none")
-  
+
   X <- if (is.matrix(X)) X else as.matrix(X)
   y <- if (is.matrix(y)) y else as.matrix(y)
   C3 <- if (is.matrix(C3) | is.null(C3)) C3 else as.matrix(C3)
-  
+
   W <- tca.mdl[["W"]]
   flog.info("Validating input...")
   tcareg.validate_input(X, W, y, C3, test, null_model, alternative_model, save_results, fast_mode, output, sort_results, parallel, num_cores, log_file, features_metadata, debug)
-  
+
   flog.info("Preparing data...")
   X <- t(X)
   mus_hat <- tca.mdl[["mus_hat"]]
@@ -325,15 +325,15 @@ tcareg <- function(X, tca.mdl, y, C3 = NULL, test = "marginal_conditional", null
   null_model <- if (is.null(null_model)) NULL else sort(match(null_model, colnames(W)))
   alternative_model <- sort(match(alternative_model, colnames(W)))
   k <- ncol(W)
-  
+
   flog.info("Running TCA regression...")
   res <- tcareg.fit(X, y, W, mus_hat, sigmas_hat, C2, deltas_hat, C1, gammas_hat, tau_hat, C3, test, null_model, alternative_model, fast_mode, parallel, num_cores)
-  
+
   if (save_results) {
     flog.info("Saving results...")
     save_association_results(res, output, test, fast_mode, alternative_model, colnames(X), colnames(W), colnames(C3), sort_results, features_metadata)
   }
-  
+
   flog.info("Finished tcareg.")
   return(res)
 }

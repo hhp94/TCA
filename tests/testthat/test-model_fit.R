@@ -53,6 +53,15 @@ test_that("compare to TCA 1.2.1 fit, refit_W = TRUE", {
   expect_true(all(exp_3_df$results))
 })
 
+test_that("rank-deficiency is detected", {
+  data <- test_data(40, 1000, 6, 1, 1, 0.01)
+  C1_1 <- cbind(data$C1, data$C1)
+  C2_1 <- cbind(data$C2, data$C2)
+  expect_invisible(invisible(tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, verbose = F)))
+  expect_error(tca(X = data$X, W = data$W, C1 = C1_1, C2 = data$C2, verbose = F))
+  expect_error(tca(X = data$X, W = data$W, C1 = data$C1, C2 = C2_1, verbose = F))
+  expect_error(tca(X = data$X, W = data$W, C1 = C1_1, C2 = C2_1, verbose = F))
+})
 
 test_that("Verify that p-values are not returned for gamma and delta of constrain_mu == TRUE", {
   skip_on_cran()

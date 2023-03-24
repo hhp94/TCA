@@ -66,7 +66,7 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
     cl <- NULL
     if (parallel) {
       cl <- init_cluster(num_cores)
-      clusterExport(cl, varlist = c("C1_", "W_norms", "X_tilde", "W", "k", "p2", "C2", "p1", "p1", "fastLM_ftest"), envir = environment())
+      clusterExport(cl, varlist = c("C1_", "W_norms", "X_tilde", "W", "k", "p2", "C2", "p1", "p1", "fastLM_ftest", "fastLm_stats"), envir = environment())
     }
     res <- pblapply(seq_len(m), function(j) {
       mdl1.fit <- RcppEigen::fastLm(
@@ -91,6 +91,7 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
       # Sacrifice some code readability here by using -1 instead of
       ## mdl1.coef[`which(rownames(mdl1.coef) != "(Intercept)")`, "Pr(>|t|)"]
       deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
+      # stopifnot("Matrix is rank deficient, check C1, C2"=!anyNA(deltas_gammas_hat_pvals))
 
       # deltas_gammas_hat_pvals <- summary(mdl1.fit)$coefficients[2:(1+k+p1*k+p2),4];
       gammas_hat_pvals.joint <- numeric(p1) + 1
