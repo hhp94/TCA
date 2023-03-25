@@ -109,6 +109,7 @@ load_all()
 ```{r}
 # Simulate the data
 set.seed(1234)
+library(TCA) # Version 1.2.1
 data <- test_data(100, 10000, 6, 1, 1, 0.01)
 # tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 lapply(data, dim)
@@ -122,8 +123,6 @@ by 7x.
 
 ```{r, eval = FALSE} 
 set.seed(1234)
-install.packages("TCA")
-library(TCA)
 # Run the data sequentially first. This is the results for ver 1.2.1.  
 prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)})
 saveRDS(prof_obj, "./assets/1_2_1_sequential_n100_m1e5.rds")
@@ -140,7 +139,8 @@ prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)}
 saveRDS(prof_obj, "./assets/modded_sequential_n100_m1e5.rds")
 
 # modded vars.mle = TRUE
-prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)}
+prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+                         vars.mle = TRUE)})
 saveRDS(prof_obj, "./assets/modded_sequential_vars.mle.n100_m1e5.rds")
 
 # Then test the parallel performance
@@ -154,10 +154,20 @@ saveRDS(prof_obj, "./assets/modded_parallel_n100_m1e5.rds")
 * The data graph shows 2x memory saving and 6x performance increase.  
 ```{r, eval = FALSE}
 seq_1_2_1 <- readRDS("./assets/1_2_1_sequential_n100_m1e5.rds")
+seq_1_2_1.mle <- readRDS("./assets/1_2_1_sequential_vars.mle_n100_m1e5.rds")
 seq_modded <- readRDS("./assets/modded_sequential_n100_m1e5.rds")
+seq_modded.mle <-  readRDS("./assets/modded_sequential_vars.mle.n100_m1e5.rds")
 seq_parallel_modded <- readRDS("./assets/modded_parallel_n100_m1e5.rds")
 
+# 1.2.1 vs modded
 seq_1_2_1
+seq_modded
+
+# 1.2.1 vs modded mle
+seq_1_2_1.mle
+seq_modded.mle
+
+# modded sequential vs parallel
 seq_modded
 seq_parallel_modded
 ```
