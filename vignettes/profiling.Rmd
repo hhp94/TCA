@@ -16,23 +16,88 @@ knitr::opts_chunk$set(
 ```
 
 # Synopsis
-* TCA is a great package. But it is running unexpectedly slowly. A project with
-a moderately sized (400,000 CpGs * 1000 Samples * 6 Cell Types, vars.mle = FALSE)
-couldn't converge after 12 hours and hit out of memory error with 120GB of RAM.
-* This fork is created to profile the performance of TCA and see if there are 
+* `{TCA}` is a great package. But it is running unexpectedly slowly. A 
+moderately sized project (400,000 CpGs * 1000 Samples * 6 Cell Types, 
+`vars.mle = FALSE`) couldn't converge after 12 hours and hit out of memory error 
+with 120GB of RAM.  
+* This fork is created to profile the performance of `{TCA}` and see if there are 
 "low hanging fruit" bottlenecks we can resolve.  
 
+# Methods
+* Use the amazing `TCA::test_data()` function to simulate data under different
+scenarios  
+* Profile with `profvis::profvis()` and identify bottle necks  
+* Read the source codes and determine if there are low hanging fruits  
+* Created replicates of fit results from `{TCA}` version 1.2.1 as test fixtures  
+* Make small changes, fit the model, and test if all the fit results are within 
+machine tolerance of differences with the test fixtures  
+* Profile the modded version under sequential, `vars.mle = TRUE`, `refit_W = TRUE`,
+`TCA::tcareg()` fit, and parallel runs  
 
-# Changelog 
+# Results
+* After modifications, running sequentially, we achieved a 6x speed up in a
+simulation.  
+* The major source of speed up achieved is from replacing the `data.frame()`, 
+`lm()`, and `anova()` calls with `RcppEigen::fastLm()` calls. This also helped 
+with memory usage by 2x. This is potentially an unsafe change. But the 
+risk is small because.  
+  + The constrained optimization step before `fastLm()` has internal checks for 
+  matrix positive definiteness. Indeed, testing using rank deficient C1 and C2 
+  matrices tripped the matrix positive definite checks before `fastLm()` is even
+  called.  
+  + `RcppEigen::fastLm()` returns the correct values for rank deficient matrices,
+  and we can then use `anyNA()` to check for `NA` of p-values for gamma hats if
+  the optimization throw an error. This shouldn't be necessary.  
+  + `NA` is already expected to be taken care of by users.  
+  + For 5 repetitions, the returned estimates are the same between the `fastLm()` 
+  version and `TCA::tca()` version 1.2.1.  
+  + Since it looks like `{TCA}` is only running partial F-tests between 2 models, 
+  we don't need the extra information of `lm()` objects or the checks and 
+  formatting of with `stats::anova()` calls. Implementing a minimal version of 
+  the partial F-test also helped reduced fit time.  
+  + We can also use `lm.fit()` as well to minimize dependencies. `lm.fit()` comes 
+  with more safety checks and probably no significance different performance
+  compared to `fastLm()`.  
+* Replacing `pracma::repmat()` calls with `MESS::repmat()`, which directly calls
+C codes, helped a lot as well. This is because the optimization steps repeatedly 
+calls on this function. Reduced the `tca.fit_means_vars()` times by 1.6x.  
+* Main bottleneck of `vars.mle = TRUE` fit is from `nloptr()`. A good workflow 
+might be to fit with the alternative optimization for model iteration and then 
+fit one final fit with `vars.mle = TRUE`.  
+* Importantly, fit results using `{TCA}` version 1.2.1 under multiple repeats and 
+scenarios are saved as test fixtures to make sure changes in `./R/model_fit.R` 
+will give back the same estimates using `{testthat}`.  
+
+# Best practices
+* In short, the correct way to use TCA is to not use the parallel argument in
+`TCA::tca()`.  
+  + On a Windows machine, the overhead caused by data being shuffled back and 
+  forth by PSOCK increased the fit time by 7x in a small simulation.  
+  + On a Linux machine, the performance using 3 clusters is slower than the 
+  sequential run by 1.1x in a simulation. However, on a HPC where small latency 
+  can add up or where huge data is passed to `TCA::tca()`, the data has to be 
+  replicated for each fork and the performance might worsen and consume much 
+  more memory for slower speed.  
+* The correct way to parallel `TCA::tca()` is to chunk the data by X and run 
+parallel over each chunk instead.  
+  + For example, for 400,000 CpGs, chunk into 7 x 50,000\*m chunks or 
+  14 x 30,000\*m chunks and parallel over these chunks for 7 cores on a 8 cores 
+  machine for example.  
+* If `refit_W` is needed. Run the most informative sites instead of the whole 
+epi-genome.  
+
+# Changelog
+[23/03/24]
+* Replaced all the `pracma::repmat()` calls with `MESS::repmat()` calls 
+outside of the `tcareg()` related functions. This shall be tackled later.  
+* Added test for no result change from ver 1.2.1 for `vars.mle = TRUE`.  
+* Added test for no result change from ver 1.2.1 for `refit_W()`.  
 [23/03/23]
 * Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`  
 * Added `fastLM_ftest()` to `./R/utils.R` to calculate partial f-tests.  
-[23/03/24]
-* Replaced all the `pracma::repmat()` calls with `MESS::repmat()`
-calls outside of the `tcareg()` related functions. This shall be tackled later.  
-* Added test for no result change to ver 1.2.1 for `refit_W()`.  
+* Added test for no result change from ver 1.2.1.  
 
-```{r setup, eval = FALSE}
+```{r eval = FALSE}
 library(profvis) # Profiling tool
 library(devtools)
 library(tictoc)
@@ -41,70 +106,116 @@ load_all()
 ```
 
 # Profiling
-```{r setup, eval = FALSE} 
+```{r}
 # Simulate the data
 set.seed(1234)
 data <- test_data(100, 10000, 6, 1, 1, 0.01)
 # tca.mdl <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
 lapply(data, dim)
-
-set.seed(1234)
-# Run the data sequentially first.
-# sequential <- profvis({
-#   tca.mdl <-
-#     tca(
-#       X = data$X,
-#       W = data$W,
-#       C1 = data$C1,
-#       C2 = data$C2,
-#       parallel = TRUE,
-#       num_cores = 6L
-#     )
-# })
-#
-# saveRDS(sequential, "./assets/parallel_modded_sequential_n100_m1e5.rds")
-# saveRDS(sequential, "./assets/modded_sequential_n100_m1e5.rds")
-# saveRDS(sequential, "./assets/1_2_1_sequential_n100_m1e5.rds")
 ```
 
-```{r setup, eval = FALSE}
+## Windows machine
+* Cluster type will be set to PSOCK. This would be the worst case scenario for
+TCA since PSOCK has to shuttle data back and forth between the workers and this
+massively increases the overhead. In the results below, the fit time was increased
+by 7x.  
+
+```{r, eval = FALSE} 
+set.seed(1234)
+install.packages("TCA")
+library(TCA)
+# Run the data sequentially first. This is the results for ver 1.2.1.  
+prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)})
+saveRDS(prof_obj, "./assets/1_2_1_sequential_n100_m1e5.rds")
+
+# 1.2.1 vars.mle = TRUE
+prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, 
+                         vars.mle = TRUE)})
+saveRDS(prof_obj, "./assets/1_2_1_sequential_vars.mle_n100_m1e5.rds")
+
+# Then remove.packages("TCA") and load_all() this branch. Also run sequentially
+remove.packages("TCA")
+load_all()
+prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)}
+saveRDS(prof_obj, "./assets/modded_sequential_n100_m1e5.rds")
+
+# modded vars.mle = TRUE
+prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)}
+saveRDS(prof_obj, "./assets/modded_sequential_vars.mle.n100_m1e5.rds")
+
+# Then test the parallel performance
+prof_obj <- profvis({
+  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE, 
+      num_cores = 6L)
+})
+saveRDS(prof_obj, "./assets/modded_parallel_n100_m1e5.rds")
+```
+
+* The data graph shows 2x memory saving and 6x performance increase.  
+```{r, eval = FALSE}
 seq_1_2_1 <- readRDS("./assets/1_2_1_sequential_n100_m1e5.rds")
 seq_modded <- readRDS("./assets/modded_sequential_n100_m1e5.rds")
-seq_parallel_modded <- readRDS("./assets/parallel_modded_sequential_n100_m1e5.rds")
+seq_parallel_modded <- readRDS("./assets/modded_parallel_n100_m1e5.rds")
 
 seq_1_2_1
 seq_modded
 seq_parallel_modded
 ```
 
-* The sequential run took 7' to be done
-* We see that in `model_fit.R/tca_fit.R`, r is spending 
-  + High peak memory and decent amount of time to call `tca.fit_means_vars`. 
-  This is the internal loop convergence test of TCA. This is probably what 
-  bottle necked the loop in parallel mode because the high memory overhead.  
+## Linux machine
+* The forked cluster is available on linux machines.  
+```{r}
+set.seed(1234)
+prof_obj <- profvis({
+    tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2 )})
+saveRDS(prof_obj, "./assets/linux_modded_sequential_n100_m1e5.rds")
+
+prof_obj <- profvis({
+    tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE,
+        num_cores = 3L)})
+saveRDS(prof_obj, "./assets/linux_modded_parallel_n100_m1e5.rds")
+```
+
+* Slower by 1.08x.  
+```{r}
+seq_fork_modded <- readRDS("./assets/linux_modded_sequential_n100_m1e5.rds")
+seq_fork_modded_par <- readRDS("./assets/linux_modded_parallel_n100_m1e5.rds")
+seq_fork_modded
+seq_fork_modded_par
+```
+
+# Notes
+* We see that in `model_fit.R/tca_fit.R`, R is spending  
+  + High peak memory and decent amount of time to call `tca.fit_means_vars()`. 
+  This is the internal loop optimization of `tca()`. This is probably where the 
+  bottle neck for the loop in parallel mode because the high memory overhead.  
   + High peak memory and a lot of time to call `lm()` and subsequently 
-  `model.frame.default()`  
+  `model.frame.default()`.  
   + The `anova.lm()` call to perform partial F tests is also taking a 
-  significant amount time.  
+  significant amount time.   
 * Let's try to replace the `data.frame()` call with a straight `cbind()` call to 
 create a X matrix. Then we can use `RcppEigen::fastLm()` to directly call 
-the data matrix and the vector y.  
+the X data matrix and the vector y.  
   + This is potentially a dangerous trade-off between speed and safety. But 
-  since NA is already expected to be taken care of by user, we should be safe to 
-  make this trade off. Other issues such as full rank matrix should still cause 
-  errors. We can create a test case for this.  
-  + Have to implement an `anova()` method for `RcppEigen::fastLm()`.  
+  `NA` is already expected to be taken care of by user. `{quadprog}` has 
+  internal check for positive definite matrix. Furthermore, `RcppEigen::fastLm()` 
+  returns the correct results for rank deficient matrix. We should be safe to 
+  make this trade off. We can create a test case for this.  
+  + Have to implement an `anova()` method for `RcppEigen::fastLm()`. This is 
+  straightforward.  
 * The `pracma::repmat()` calls are also taking a good amount of time. Looks like
 the implementation in `{MESS}` accomplish the same thing but calls C code 
 directly so it should be faster. This change would add up since `pracma::repmat()` 
-is called alot. 
+is called a lot.
 
 # Replacing codes
-* Warning, this might be unsafe
+* Warning, this might be unsafe  
 
 ## fastLm
-* Replace the `data.frame()` and `lm()` call with `RcppEigen::fastLm`
+* Replace the `data.frame()` and `lm()` call with `RcppEigen::fastLm`  
+* Two code chunks to be replaced.  
 ```{r, eval = F}
+# Before
 df <-
   data.frame(y = X_tilde[, j], cbind(
     W / t(repmat(W_norms[, j], k, 1)),
@@ -133,7 +244,7 @@ deltas_gammas_hat_pvals <-
 ```
 
 ```{r, eval = F}
-# Remove call to data.frame() and lm()
+# After
 mdl1.fit <- RcppEigen::fastLm(
   X = cbind(
     "(Intercept)" = 1.0, # <----------- Remember the intercept
@@ -158,7 +269,7 @@ mdl1.coef <- summary(mdl1.fit)$coefficients
 deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
 ```
 
-Sample with change 1
+Second chunk  
 ```{r, eval = F}
 # Before
 C1_alt <- C1_ / t(repmat(W_norms[, j], k * p1, 1))
@@ -204,8 +315,8 @@ for (d in 1:p1) {
 use_package("MESS")
 ```
 
-* Replace a bunch of `t(repmat ...)` with `MESS::repmat` to get rid of a t()
-call and use the more efficient `MESS::repmat()` call.  
+* Replace a bunch of `t(repmat ...)` with `MESS::repmat` to remove a `t()` call 
+and use the more efficient `MESS::repmat()` call.  
 
 * For `vars.mle = TRUE`, carefully reproduce the gradient calculation and replace
 with `MESS::repmat()` as well as removing some repeated calculations.  
@@ -272,19 +383,20 @@ that is used only once in the function to minimize overhead for `nloptr()`
 ## parallel
 * Let's think about the parallel.  
 * Looks like R is stopping and starting clusters multiple times.  
-  + Cluster is started twice. Once for the tca.fit_mean_vars and once for 
+  + Cluster is started twice. Once for the `tca.fit_mean_vars()` and once for 
   p-values of deltas and gammas.  
   + RUNNING CLUSTER IS IN GENERALL MUCH SLOWER THAN SEQUENTIAL! This is probably
-  because of the overhead.
+  because of overhead.
   + Make sure to only run in sequential mode. But parallel over chunks of 
   X matrix instead.  
 * Add a stop for if parallel and refit_W is FALSE. We can probably remove all
 the parallel to be honest and just run the codes over chunks of X.  
+
 ## removing memory consuming `<-` calls
-* Check for memory consuming `<-` calls
+* (TO DO) Check for memory consuming `<-` calls  
 
 # Test
-## Did results changed?
+## Did results change?
 ```{r}
 data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))[1, ]
 fitted <- readRDS(test_path("fixtures", "sim1_exp_2_fit_1_2_1.rds"))[1, ]
@@ -311,7 +423,6 @@ sapply(
   }
 )
 
-
 fitted$fit_1_2_1[[1]] - fitted$new_fit[[1]]
 compare_fit <- function(o, n) {
   all(sapply(names(o), \(x) {
@@ -330,7 +441,7 @@ plan(sequential)
 ```
 
 ## fastLm
-1 and 2 has to be tested concurrently
+The two code chunks that were replaced has to be tested concurrently  
 ```{r}
 data <- test_data(30, 1000, 6, 1, 1, 0.01)
 C1_1 <- cbind(data$C1, data$C1)
@@ -448,7 +559,6 @@ lm(y ~ ., data = df) |>
 library(RcppEigen)
 mdl1.fit <- fastLm(X = X, y = y)
 
-
 mdl1.coef <- summary(mdl1.fit)$coefficients
 # First row is always intercept. Sacrifice some code readability here
 # Sacrifice some code readability here by using -1 instead of
@@ -456,7 +566,6 @@ mdl1.coef <- summary(mdl1.fit)$coefficients
 deltas_gammas_hat_pvals <- mdl1.coef[-1, "Pr(>|t|)"]
 stopifnot("C1 is rank deficient" = !anyNA(deltas_gammas_hat_pvals))
 ```
-
 
 ## repmat
 ### tca.fit
@@ -672,7 +781,6 @@ sequential_vars.mle2 <- profvis({
     )
 })
 
-
 saveRDS(sequential_vars.mle, "./assets/sequential_n200_m1e3_vars.mle.rds")
 ```
 
@@ -698,8 +806,9 @@ waldo::compare(
 
 microbenchmark::microbenchmark(
   colSums(tm),
-  Rfast::colsums(tm),
+  # Rfast::colsums(tm),
   matrixStats::colSums2(tm)
 )
 ```
 
+ 
