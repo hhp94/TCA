@@ -293,6 +293,32 @@ fastLM_ftest <- function(rm, fm) {
   )
 }
 
+
+#' Wrapper for Testing tcareg
+#'
+#' @param d list of input matrixces, X, W, C1 and C2 required
+#' @param ... args passed to tcareg
+#'
+#' @return
+#' @keywords internal
+test_tcareg <- function(d, ...) {
+  stage_1 <- tca(
+    X = d$X,
+    W = d$W,
+    C1 = d$C1[, 2:ncol(d$C1), drop = FALSE],
+    C2 = d$C2[, 1, drop = FALSE],
+    constrain_mu = TRUE
+  )
+  
+  tcareg(
+    X = d$X,
+    tca.mdl = stage_1,
+    y = d$C1[, 1, drop = FALSE],
+    C3 = cbind(d$C1[, 2:ncol(d$C1), drop = FALSE], d$C2[, 1, drop = FALSE]),
+    ...
+  )
+}
+
 ### DEBUG ------------------
 # summary_fastLm <- function(object, ...) {
 #   message("Chunk 1")

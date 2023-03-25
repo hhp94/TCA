@@ -15,13 +15,14 @@ set.seed(my_seed)
 data <- dplyr::tibble(id = seq_len(n_dat)) # Store generated data
 
 # Simulation 1 ---------------------------------------------------------
+## Make sure c1 >= 2 to also be able to test tcareg
 data$df <-
   list(
     TCA::test_data(25, 1000, 3, 2, 2, 0.01, log_file = NULL),
-    TCA::test_data(25, 1000, 4, 1, 2, 0.01, log_file = NULL),
+    TCA::test_data(25, 1000, 4, 2, 2, 0.01, log_file = NULL),
     TCA::test_data(25, 1000, 4, 3, 2, 0.01, log_file = NULL),
-    TCA::test_data(25, 1000, 3, 2, 1, 0.01, log_file = NULL),
-    TCA::test_data(25, 1000, 3, 2, 1, 0.02, log_file = NULL)
+    TCA::test_data(25, 1000, 3, 3, 3, 0.01, log_file = NULL),
+    TCA::test_data(25, 1000, 3, 4, 4, 0.02, log_file = NULL)
   )
 
 data$seed <- my_seed
@@ -31,7 +32,7 @@ saveRDS(data, test_path("fixtures", "sim1_simdata.rds"))
 data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
 fitted <- data[, which(names(data) == "id")] # Store fitted object
 
-set.seed(my_seed)
+set.seed(unique(data$seed))
 plan(multisession, workers = 5)
 
 fitted$fit_1_2_1 <- future_map(
@@ -39,8 +40,7 @@ fitted$fit_1_2_1 <- future_map(
   \(d) {
     tca(X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, verbose = FALSE)
   },
-  .options = furrr_options(seed = TRUE, packages = "TCA"),
-  .progress = TRUE
+  .options = furrr_options(seed = TRUE, packages = "TCA")
 )
 
 plan(sequential)
@@ -50,7 +50,7 @@ saveRDS(fitted, test_path("fixtures", "sim1_exp_1_fit_1_2_1.rds"))
 data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
 fitted_mle <- data[, which(names(data) == "id")] # Store fitted object
 
-set.seed(my_seed)
+set.seed(unique(data$seed))
 plan(multisession, workers = 5)
 
 fitted_mle$fit_1_2_1 <- future_map(
@@ -58,8 +58,7 @@ fitted_mle$fit_1_2_1 <- future_map(
   \(d) {
     tca(X = d$X, W = d$W, C1 = d$C1, C2 = d$C2, vars.mle = TRUE, verbose = FALSE)
   },
-  .options = furrr_options(seed = TRUE, packages = "TCA"),
-  .progress = TRUE
+  .options = furrr_options(seed = TRUE, packages = "TCA")
 )
 
 plan(sequential)
@@ -69,7 +68,7 @@ saveRDS(fitted_mle, test_path("fixtures", "sim1_exp_2_fit_1_2_1.rds"))
 data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
 fitted_refit_W <- data[, which(names(data) == "id")] # Store fitted object
 
-set.seed(my_seed)
+set.seed(unique(data$seed))
 plan(multisession, workers = 5)
 
 fitted_refit_W$fit_1_2_1 <- future_map(
@@ -80,9 +79,26 @@ fitted_refit_W$fit_1_2_1 <- future_map(
       refit_W = TRUE, refit_W.features = rownames(d$X), verbose = FALSE
     )
   },
-  .options = furrr_options(seed = TRUE, packages = "TCA"),
-  .progress = TRUE
+  .options = furrr_options(seed = TRUE, packages = "TCA")
 )
 
 plan(sequential)
 saveRDS(fitted_refit_W, test_path("fixtures", "sim1_exp_3_fit_1_2_1.rds"))
+
+# Scenario 4, tcareg fit ----------------------------------------------
+data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))
+tcareg_fit <- data[, which(names(data) == "id")] # Store fitted object
+
+set.seed(unique(data$seed))
+plan(multisession, workers = 5)
+
+tcareg_fit$fit_1_2_1 <- future_map(
+  data$df,
+  \(x) {test_tcareg(x, test = "joint", fast_mode = FALSE)},
+  .options = furrr_options(seed = TRUE, packages = "TCA")
+)
+
+plan(sequential)
+saveRDS(tcareg_fit, test_path("fixtures", "sim1_exp_4_fit_1_2_1.rds"))
+
+# Scenario 5 -----------------------------
