@@ -45,7 +45,12 @@ tca.fit <- function(X, W, C1, C1.map, C2, refit_W, tau, vars.mle, constrain_mu, 
     flog.debug("Test for convergence.")
     U <- (tcrossprod(W, mus_hat) + tcrossprod(C2, deltas_hat) + tcrossprod(C1_, gammas_hat) - X)**2
     W_squared <- W**2
-    ll_new <- -minus_log_likelihood_tau(U, W_squared, sigmas_hat, const, tau_hat)[[1]]
+    m_mod <- ncol(U) ## modded
+    res_mod <- matrix(0, m_mod, 2) ## modded
+    ll_new <- -minus_log_likelihood_tau(
+      U, W_squared, sigmas_hat, const, tau_hat,
+      m = m_mod, res = res_mod
+    )[[1]]
     flog.debug("~~Main loop ll=%s", ll_new)
     # Test for convergence
     ll_diff <- ll_new - ll_prev
@@ -340,8 +345,8 @@ tca.fit_means_vars <- function(
       res <- pblapply(seq_len(m), function(j) {
         nloptr(
           x0 = sigmas_hat[j, ],
-          eval_f = function(x, U_j, W_squared, const, tau_hat) {
-            minus_log_likelihood_sigmas(x, U_j, W_squared, const, tau_hat)
+          eval_f = function(x, U_j, W_squared, const, tau_hat, n_W_squared, k) {
+            minus_log_likelihood_sigmas(x, U_j, W_squared, const, tau_hat, n_W_squared = n_W_squared, k = k)
           },
           lb = lb,
           ub = ub,
@@ -349,7 +354,9 @@ tca.fit_means_vars <- function(
           U_j = U[, j],
           W_squared = W_squared,
           const = const,
-          tau_hat = tau_hat
+          tau_hat = tau_hat,
+          n_W_squared = nrow(W_squared),
+          k = length(sigmas_hat[j, ])
         )$solution
       }, cl = cl)
 
@@ -362,10 +369,12 @@ tca.fit_means_vars <- function(
         flog.debug("Estimate tau.")
         lb <- config[["min_sd"]]
         ub <- Inf
+        m_mod <- ncol(U) ### modded
+        res_mod <- matrix(0, m_mod, 2) ### modded
         tau_hat <- nloptr(
           x0 = tau_hat,
-          eval_f = function(x, U, W_squared, sigmas_hat, const) {
-            minus_log_likelihood_tau(U, W_squared, sigmas_hat, const, x)
+          eval_f = function(x, U, W_squared, sigmas_hat, const, m, res) {
+            minus_log_likelihood_tau(U, W_squared, sigmas_hat, const, x, m = m, res = res)
           },
           lb = lb,
           ub = ub,
@@ -373,7 +382,9 @@ tca.fit_means_vars <- function(
           U = U,
           W_squared = W_squared,
           sigmas_hat = sigmas_hat,
-          const = const
+          const = const,
+          m = m_mod,
+          res = res_mod
         )$solution
       }
     } else {
@@ -407,7 +418,12 @@ tca.fit_means_vars <- function(
     }
 
     flog.debug("Test for convergence.")
-    ll_new <- -minus_log_likelihood_tau(U, W_squared, sigmas_hat, const, tau_hat)[[1]]
+    m_mod <- ncol(U) ### modded
+    res_mod <- matrix(0, m_mod, 2) ### modded
+    ll_new <- -minus_log_likelihood_tau(
+      U, W_squared, sigmas_hat, const, tau_hat,
+      m = m_mod, res = res_mod
+    )[[1]]
     # Test for convergence
     ll_diff <- ll_new - ll_prev
     flog.debug("ll_new=%s, ll_prev=%s, ll_diff=%s, diff_threshold=%s", ll_new, ll_prev, ll_diff, config[["epsilon"]] * abs(ll_new))
@@ -507,9 +523,11 @@ calc_C1_W_interactions <- function(W, C1) {
 #  const <- -n*log(2*pi)
 #  W_squared <- W**2
 #  tau
-minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau) {
-  m <- ncol(U)
-  res <- matrix(0, m, 2)
+#  m <- ncol(U)
+#  res <- matrix(0, m, 2)
+minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau, m, res) {
+  # m <- ncol(U)
+  # res <- matrix(0, m, 2)
   tmp <- lapply(seq_len(m), function(j) {
     V <- tcrossprod(W_squared, t(sigmas[j, ]**2)) + tau**2
     # V_squared <- V**2
@@ -518,8 +536,8 @@ minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau) {
   for (j in seq_len(m)) {
     res[j, ] <- tmp[[j]]
   }
-  res <- colSums(res)
-  return(list("objective" = res[1], "gradient" = res[2]))
+  r <- colSums(res)
+  return(list("objective" = r[1], "gradient" = r[2]))
 }
 
 # Returns the (minus) log likelihood of the model for a particular feature j in a list together with the gradient with respect to sigmas of feature j
@@ -529,12 +547,14 @@ minus_log_likelihood_tau <- function(U, W_squared, sigmas, const, tau) {
 #  const <- -n*log(2*pi)
 #  W_squared <- W**2
 #  tau
-minus_log_likelihood_sigmas <- function(sigmas, U_j, W_squared, const, tau) {
-  k <- length(sigmas)
+#  n_W_squared <- nrow(W_squared) ## Modded
+#  k <- length(sigmas) ## Modded
+minus_log_likelihood_sigmas <- function(sigmas, U_j, W_squared, const, tau, n_W_squared, k) {
+  # k <- length(sigmas)
   # n <- nrow(W_squared)
   V <- tcrossprod(W_squared, t(sigmas**2)) + tau**2
   # V_squared <- V**2
-  W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = nrow(W_squared), 1)
+  W_squared_sig <- W_squared * MESS::repmat(matrix(sigmas, nrow = 1), nrow = n_W_squared, 1)
   return(list(
     "objective" = -0.5 * (const - sum(log(V)) - sum(U_j / V)),
     "gradient" = -(

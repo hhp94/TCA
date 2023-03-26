@@ -23,17 +23,15 @@ Imports:
     stats,
     quadprog,
     Matrix,
-    rlang,
     RcppEigen,
-    furrr,
     purrr,
-    MESS
+    MESS,
+    furrr
 Depends: R (>= 3.5.0)
 Suggests: 
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown,
-    dplyr
+    rmarkdown
 URL: https://www.nature.com/articles/s41467-019-11052-9
 BugReports: https://github.com/cozygene/TCA/issues
 VignetteBuilder: knitr

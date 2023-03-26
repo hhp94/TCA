@@ -31,7 +31,6 @@ start_logger <- function(log_file, debug, verbose = TRUE) {
   if (!verbose) (flog.threshold("ERROR"))
 }
 
-
 init_cluster <- function(num_cores = NULL) {
   flog.debug("Initiate cluster...")
   cl <- makeCluster(get_num_cores(num_cores))
@@ -126,7 +125,6 @@ tca.validate_input <- function(X, W, C1, C1.map, C2, refit_W, refit_W.features, 
   th <- config[["min_sd"]]**2
   assert(sum(rowVars(X) < th) == 0, paste("X must not include features with variance less than ", as.character(th), sep = ""))
 }
-
 
 tcasub.validate_input <- function(tca.mdl, features, log_file, debug) {
   flog.debug("Validating input...")
@@ -299,7 +297,7 @@ fastLM_ftest <- function(rm, fm) {
 #' @param d list of input matrixces, X, W, C1 and C2 required
 #' @param ... args passed to tcareg
 #'
-#' @return
+#' @return a [tcareg()] fit
 #' @keywords internal
 test_tcareg <- function(d, ...) {
   stage_1 <- tca(
@@ -309,7 +307,7 @@ test_tcareg <- function(d, ...) {
     C2 = d$C2[, 1, drop = FALSE],
     constrain_mu = TRUE
   )
-  
+
   tcareg(
     X = d$X,
     tca.mdl = stage_1,
@@ -318,6 +316,20 @@ test_tcareg <- function(d, ...) {
     ...
   )
 }
+
+
+# split_input.validate_input <- purrr::partial(
+#   tca.validate_input,
+#   refit_W = FALSE,
+#   refit_W.features = NULL,
+#   refit_W.sparsity = 500,
+#   refit_W.sd_threshold = 0.02,
+#   tau = NULL,
+#   constrain_mu = FALSE,
+#   parallel = FALSE,
+#   num_cores = NULL,
+#   max_iters = 10
+# )
 
 ### DEBUG ------------------
 # summary_fastLm <- function(object, ...) {

@@ -94,7 +94,9 @@ plan(multisession, workers = 5)
 
 tcareg_fit$fit_1_2_1 <- future_map(
   data$df,
-  \(x) {test_tcareg(x, test = "joint", fast_mode = FALSE)},
+  \(x) {
+    test_tcareg(x, test = "joint", fast_mode = FALSE)
+  },
   .options = furrr_options(seed = TRUE, packages = "TCA")
 )
 

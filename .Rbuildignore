@@ -2,4 +2,4 @@
 ^\.Rproj\.user$
 ^vignettes/profiling\.Rmd$
 ^TCA\.log$
-^assets/change_1\.rds$
+^tca_split\.log$

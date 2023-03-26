@@ -7,8 +7,7 @@
 
 test_that("test/testthat/helper.R works", {
   expect_true(file.exists(assets_p("X.txt")))
-  expect_true(file.exists(assets_p("ewas", "exp2_sim1_k6_n500_data.txt
-")))
+  expect_true(file.exists(assets_p("ewas", "exp2_sim1_k6_n500_data.txt")))
 })
 
 test_that("Comparison with the results given by the matlab version", {
@@ -116,8 +115,7 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   skip_on_cran()
 
   # load data
-  X <- as.matrix(read.table(assets_p("ewas", "exp2_sim1_k6_n500_data.txt
-"), header = FALSE, sep = ","))
+  X <- as.matrix(read.table(assets_p("ewas", "exp2_sim1_k6_n500_data.txt"), header = FALSE, sep = ","))
   colnames(X) <- 1:ncol(X)
   rownames(X) <- 1:nrow(X)
   W <- as.matrix(read.table(assets_p("ewas", "exp2_sim1_k6_n500_W.txt"), header = FALSE, sep = ","))
@@ -131,14 +129,14 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   # (1) joint test
   message("(1) joint test")
   # power
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "joint", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "joint", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.5)
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "joint", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "joint", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.5)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "joint", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "joint", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m < 0.05)
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "joint", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "joint", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m < 0.05)
 
   # (2) marginal test
@@ -149,11 +147,11 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_marg_ct_1_effs_5_W_noise_0.txt", test = "marginal", fast_mode = TRUE)
   expect_true(sum(pvals[, 1] < 0.05 / m) / m > 0.9)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "marginal", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "marginal", fast_mode = FALSE)
   for (h in 1:k) {
     expect_true(sum(pvals[, h] < 0.05) / m < 0.1)
   }
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "marginal", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "marginal", fast_mode = TRUE)
   for (h in 1:k) {
     expect_true(sum(pvals[, h] < 0.05) / m < 0.1)
   }
@@ -192,22 +190,22 @@ test_that("Evaluate tcareg with the results of the matlab version", {
   pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_single_beta_effs_10_W_noise_0.txt", test = "single_effect", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.8)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "single_effect", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "single_effect", fast_mode = FALSE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.05)
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "single_effect", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "single_effect", fast_mode = TRUE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.05)
 
   # (5) custom test
   message("(5) custom test")
   # power
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "custom", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "custom", fast_mode = FALSE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.4)
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "custom", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_joint_effs_10_W_noise_0.txt", test = "custom", fast_mode = TRUE)
   expect_true(sum(pvals < 0.05 / m) / m > 0.4)
   # fps rate
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "custom", fast_mode = FALSE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "custom", fast_mode = FALSE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.1)
-  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_Y_noise_0.txt", test = "custom", fast_mode = TRUE)
+  pvals <- run_ewas(X, W, tca.mdl, "exp2_sim1_k6_n500_Y_fps_effs_1_W_noise_0.txt", test = "custom", fast_mode = TRUE)
   expect_false(sum(pvals < 0.05 / m) / m > 0.1)
 })
 
@@ -215,7 +213,7 @@ test_that("Evaluate tcareg with the results of the matlab version", {
 test_that("Verify that tcareg with save_results set to TRUE functions well ", {
   skip_on_cran()
 
-  outfile.prefix <- "test_tca.tmp_file"
+  outfile.prefix <- tempdir()
   n <- 50
   m <- 5
   k <- 3
@@ -239,11 +237,12 @@ test_that("Verify that tcareg with save_results set to TRUE functions well ", {
     }
     pass <- TRUE
   }, finally = {
-    for (f in list.files(path = ".", pattern = glob2rx(paste(outfile.prefix, "*")), full.names = TRUE)) {
-      if (file.exists(f)) file.remove(f)
-    }
+    # for (f in list.files(path = outfile.prefix, pattern = glob2rx(paste("*")), full.names = TRUE)) {
+    #   if (file.exists(f)) file.remove(f)
+    # }
+    # No need. save results are sent to temp dir instead
   })
-  expect_equal(pass, TRUE)
+  expect_true(pass)
 })
 
 

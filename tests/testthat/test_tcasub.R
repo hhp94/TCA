@@ -1,7 +1,3 @@
-library("TCA")
-
-context("Test tcasub")
-
 test_that("subset the results of tca", {
   n <- 20
   m <- 30

@@ -20,6 +20,7 @@
 #' @param log_file A path to an output log file. Note that if the file \code{log_file} already exists then logs will be appended to the end of the file. Set \code{log_file} to \code{NULL} to prevent output from being saved into a file; note that if \code{verbose == FALSE} then no output file will be generated regardless of the value of \code{log_file}.
 #' @param debug A logical value indicating whether to set the logger to a more detailed debug level; set \code{debug} to \code{TRUE} before reporting issues.
 #' @param verbose A logical value indicating whether to print logs.
+#' @param W_C1_C2 A logical value indicating whether to return W C1 C2 matrices. Must be true if refit_W is TRUE.
 #'
 #' @importFrom futile.logger flog.info
 #' @importFrom pbapply pboptions
@@ -54,7 +55,7 @@
 #' @references Rahmani E, Zaitlen N, Baran Y, Eng C, Hu D, Galanter J, Oh S, Burchard EG, Eskin E, Zou J, Halperin E. Sparse PCA corrects for cell type heterogeneity in epigenome-wide association studies. Nature Methods 2016.
 #'
 #' @export tca
-tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refit_W.features = NULL, refit_W.sparsity = 500, refit_W.sd_threshold = 0.02, tau = NULL, vars.mle = FALSE, constrain_mu = FALSE, parallel = FALSE, num_cores = NULL, max_iters = 10, log_file = "TCA.log", debug = FALSE, verbose = TRUE) {
+tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refit_W.features = NULL, refit_W.sparsity = 500, refit_W.sd_threshold = 0.02, tau = NULL, vars.mle = FALSE, constrain_mu = FALSE, parallel = FALSE, num_cores = NULL, max_iters = 10, log_file = "TCA.log", debug = FALSE, verbose = TRUE, W_C1_C2 = TRUE) {
   start_logger(log_file, debug, verbose)
 
   flog.info("Starting tca...")
@@ -93,17 +94,21 @@ tca <- function(X, W, C1 = NULL, C1.map = NULL, C2 = NULL, refit_W = FALSE, refi
   X <- t(X)
   flog.info(msg)
   mdl <- tca.fit(X = X, W = W, C1 = C1, C1.map = C1.map, C2 = C2, refit_W = FALSE, tau = tau, vars.mle = vars.mle, constrain_mu = constrain_mu, parallel = parallel, num_cores = num_cores, max_iters = max_iters)
-  W <- mdl[["W"]]
-  mus_hat <- mdl[["mus_hat"]]
-  sigmas_hat <- mdl[["sigmas_hat"]]
-  tau_hat <- mdl[["tau_hat"]]
-  deltas_hat <- mdl[["deltas_hat"]]
-  gammas_hat <- mdl[["gammas_hat"]]
-  deltas_hat_pvals <- mdl[["deltas_hat_pvals"]]
-  gammas_hat_pvals <- mdl[["gammas_hat_pvals"]]
-  gammas_hat_pvals.joint <- mdl[["gammas_hat_pvals.joint"]]
+  res <- quote(list(
+    mus_hat = mdl[["mus_hat"]],
+    sigmas_hat = mdl[["sigmas_hat"]],
+    tau_hat = mdl[["tau_hat"]],
+    deltas_hat = mdl[["deltas_hat"]],
+    gammas_hat = mdl[["gammas_hat"]],
+    deltas_hat_pvals = mdl[["deltas_hat_pvals"]],
+    gammas_hat_pvals = mdl[["gammas_hat_pvals"]],
+    gammas_hat_pvals.joint = mdl[["gammas_hat_pvals.joint"]]
+  ))
   flog.info("Finished tca.")
-  return(list("W" = W, "mus_hat" = mus_hat, "sigmas_hat" = sigmas_hat, "tau_hat" = tau_hat, "deltas_hat" = deltas_hat, "gammas_hat" = gammas_hat, "deltas_hat_pvals" = deltas_hat_pvals, "gammas_hat_pvals" = gammas_hat_pvals, "gammas_hat_pvals.joint" = gammas_hat_pvals.joint, "C1" = C1, "C2" = C2))
+  if (W_C1_C2) {
+    return(c(eval(res), list(W = mdl[["W"]], C1 = C1, C2 = C2)))
+  }
+  return(eval(res))
 }
 
 

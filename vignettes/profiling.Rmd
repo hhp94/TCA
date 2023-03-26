@@ -26,7 +26,7 @@ with 120GB of RAM.
 # Methods
 * Use the amazing `TCA::test_data()` function to simulate data under different
 scenarios  
-* Profile with `profvis::profvis()` and identify bottle necks  
+* Profile with `profvis::profvis()` and identify bottlenecks  
 * Read the source codes and determine if there are low hanging fruits  
 * Created replicates of fit results from `{TCA}` version 1.2.1 as test fixtures  
 * Make small changes, fit the model, and test if all the fit results are within 
@@ -35,68 +35,113 @@ machine tolerance of differences with the test fixtures
 `TCA::tcareg()` fit, and parallel runs  
 
 # Results
-* After modifications, running sequentially, we achieved a 6x speed up in a
-simulation.  
+* After modifications, running sequentially, we achieved a **6x** speed up in a
+simulation (Fig 1).  
+* Running in parallel over chunks of X, we achieved a **13.3x** speed up in a 
+simulation with `vars.mle = TRUE` (Fig 4).  
+
+![Fig 1, 1.2.1 (left) vs modded (right)](prof_fig_1.2.1_v_mod.png)
+
+</br>  
+
 * The major source of speed up achieved is from replacing the `data.frame()`, 
 `lm()`, and `anova()` calls with `RcppEigen::fastLm()` calls. This also helped 
-with memory usage by 2x. This is potentially an unsafe change. But the 
-risk is small because.  
+with <span style="background-color: #f8e600">memory usage by 2x</span>. This is 
+potentially an unsafe change. But the risk is small because    
   + The constrained optimization step before `fastLm()` has internal checks for 
   matrix positive definiteness. Indeed, testing using rank deficient C1 and C2 
   matrices tripped the matrix positive definite checks before `fastLm()` is even
   called.  
   + `RcppEigen::fastLm()` returns the correct values for rank deficient matrices,
   and we can then use `anyNA()` to check for `NA` of p-values for gamma hats if
-  the optimization throw an error. This shouldn't be necessary.  
+  the optimization throw an error albeit being unnecessary.  
   + `NA` is already expected to be taken care of by users.  
   + For 5 repetitions, the returned estimates are the same between the `fastLm()` 
   version and `TCA::tca()` version 1.2.1.  
   + Since it looks like `{TCA}` is only running partial F-tests between 2 models, 
   we don't need the extra information of `lm()` objects or the checks and 
-  formatting of with `stats::anova()` calls. Implementing a minimal version of 
-  the partial F-test also helped reduced fit time.  
+  formatting of `stats::anova()` calls. Implementing a minimal version of 
+  the partial F-test helped reduced fit time.  
   + We can also use `lm.fit()` as well to minimize dependencies. `lm.fit()` comes 
-  with more safety checks and probably no significance different performance
-  compared to `fastLm()`.  
+  with more safety checks and probably no significant differences in performance
+  compared to `fastLm()`. But `{RcppEigen}` is so popular that it is probably 
+  already installed on most machines so let's stay with `fastLm()` for now.  
 * Replacing `pracma::repmat()` calls with `MESS::repmat()`, which directly calls
 C codes, helped a lot as well. This is because the optimization steps repeatedly 
-calls on this function. Reduced the `tca.fit_means_vars()` times by 1.6x.  
+calls on this function. Reduced the `tca.fit_means_vars()` times by **1.6x**.  
 * Main bottleneck of `vars.mle = TRUE` fit is from `nloptr()`. A good workflow 
 might be to fit with the alternative optimization for model iteration and then 
-fit one final fit with `vars.mle = TRUE`.  
+fit one final fit with `vars.mle = TRUE`. Achieved a **3.3x** improvement mostly
+through replacing the 
+<span style="background-color: #f8e600">replacing the `repmat()` calls </span>
+(Fig 2).   
+
+![Fig 2, vars.mle = TRUE, 1.2.1 (left) vs modded (right)](prof_fig_vars.mle.png)
+
+</br>  
+
 * Importantly, fit results using `{TCA}` version 1.2.1 under multiple repeats and 
 scenarios are saved as test fixtures to make sure changes in `./R/model_fit.R` 
-will give back the same estimates using `{testthat}`.  
+gives back the same estimates.  
 
 # Best practices
-* In short, the correct way to use TCA is to not use the parallel argument in
-`TCA::tca()`.  
-  + On a Windows machine, the overhead caused by data being shuffled back and 
-  forth by PSOCK increased the fit time by 7x in a small simulation.  
-  + On a Linux machine, the performance using 3 clusters is slower than the 
-  sequential run by 1.1x in a simulation. However, on a HPC where small latency 
-  can add up or where huge data is passed to `TCA::tca()`, the data has to be 
-  replicated for each fork and the performance might worsen and consume much 
-  more memory for slower speed.  
-* The correct way to parallel `TCA::tca()` is to chunk the data by X and run 
-parallel over each chunk instead.  
-  + For example, for 400,000 CpGs, chunk into 7 x 50,000\*m chunks or 
-  14 x 30,000\*m chunks and parallel over these chunks for 7 cores on a 8 cores 
-  machine for example.  
+* We probably shouldn't use the parallel argument in `TCA::tca()`.  
+* On a Windows machine, the <span style="background-color: #26d800">overhead</span> caused by data being shuffled back and 
+forth by PSOCK increased the fit time by **7x** in a small simulation.  
+  
+  ![Fig 3, parallel = TRUE, num_cores = 6 in `tca()` (left) vs sequential (right) PSOCK](prof_fig_seq_v_par_win.png)
+  
+</br>  
+
+* On a Linux machine, the performance using 3 clusters is slower than the 
+sequential run by **1.1x** in a simulation. However, on a HPC where small latency 
+can add up or where huge data is passed to `TCA::tca()`, the data has to be 
+replicated for each fork and the performance might worsen and consume much 
+more memory for slower speed.  
+* [The correct way](https://github.com/cozygene/TCA/issues/1#issuecomment-524380136) to parallel `TCA::tca()` is to chunk the data by X and run 
+parallel over each chunk instead. For example, for 400,000 CpGs, chunk into 
+7 x 50,000\*m chunks or 14 x 30,000\*m chunks and parallel over these chunks for 
+7 cores on a 8 cores machine for example.  
+* However, since the optimization of sigmas_hat and tau_hat uses information 
+from X, it is unconfirmed if chunking by X is valid since the optimization 
+techinically is only using information provided by each chunk.  
+  + Using `vars.mle = TRUE`, the correlation between parameters of a sequential and
+  an extreme chunked run where each CpG is in a chunk is at 0.99. With 
+  `vars.mle = FALSE`, this drops to 0.88.  
+  + This is a favorable trade-off if the author confirm that the findings is 
+  correct. In this simulation, we achieved a **13.3x** increase in performance  
+
+![Fig 4, 1.2.1 sequential (top) vs modded parallel by chunk X (bottom) ](1.2.1_seq_v_modded_chunk_X_par_win.png)
+
 * If `refit_W` is needed. Run the most informative sites instead of the whole 
 epi-genome.  
 
 # Changelog
-[23/03/24]
+[23/03/26]  
+
+* Added wrappers for running tca by chunks of matrix X in `./R/tca_split.R`.
+
+[23/03/25]  
+
+* Moved some function calls outside of `minus_log_likelihood_tau()` and
+`minus_log_likelihood_sigmas()` to shave off a couple of seconds through 
+possible repeated calls of `nrow()` and `length()` in `nloptr::nloptr()`.  
+
+[23/03/24]  
+
 * Replaced all the `pracma::repmat()` calls with `MESS::repmat()` calls 
-outside of the `tcareg()` related functions. This shall be tackled later.  
+outside of the `tcareg()` related functions (because `tcareg()` is fast enough).  
 * Added test for no result change from ver 1.2.1 for `vars.mle = TRUE`.  
 * Added test for no result change from ver 1.2.1 for `refit_W()`.  
-[23/03/23]
+
+[23/03/23]  
+
 * Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`  
 * Added `fastLM_ftest()` to `./R/utils.R` to calculate partial f-tests.  
 * Added test for no result change from ver 1.2.1.  
 
+
+# Profiling
 ```{r eval = FALSE}
 library(profvis) # Profiling tool
 library(devtools)
@@ -105,7 +150,6 @@ near <- dplyr::near
 load_all()
 ```
 
-# Profiling
 ```{r}
 # Simulate the data
 set.seed(1234)
@@ -123,32 +167,66 @@ by 7x.
 
 ```{r, eval = FALSE} 
 set.seed(1234)
-# Run the data sequentially first. This is the results for ver 1.2.1.  
-prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)})
+# Run the data sequentially first. This is the results for ver 1.2.1.
+prof_obj <- profvis({
+  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+})
 saveRDS(prof_obj, "./assets/1_2_1_sequential_n100_m1e5.rds")
 
 # 1.2.1 vars.mle = TRUE
-prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, 
-                         vars.mle = TRUE)})
+prof_obj <- profvis({
+  tca(
+    X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+    vars.mle = TRUE
+  )
+})
 saveRDS(prof_obj, "./assets/1_2_1_sequential_vars.mle_n100_m1e5.rds")
 
 # Then remove.packages("TCA") and load_all() this branch. Also run sequentially
 remove.packages("TCA")
 load_all()
-prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)}
+prof_obj <- profvis({
+  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+})
 saveRDS(prof_obj, "./assets/modded_sequential_n100_m1e5.rds")
 
 # modded vars.mle = TRUE
-prof_obj <- profvis({tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
-                         vars.mle = TRUE)})
+prof_obj <- profvis({
+  tca(
+    X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+    vars.mle = TRUE
+  )
+})
 saveRDS(prof_obj, "./assets/modded_sequential_vars.mle.n100_m1e5.rds")
 
 # Then test the parallel performance
 prof_obj <- profvis({
-  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE, 
-      num_cores = 6L)
+  tca(
+    X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE,
+    num_cores = 6L
+  )
 })
 saveRDS(prof_obj, "./assets/modded_parallel_n100_m1e5.rds")
+
+# Test the parallel performance chunked by X, vars.mle = TRUE
+library(furrr)
+prof_obj <- profvis({
+  split_X <- split_input(X = data$X, n_chunks = 7)
+  
+  plan(multisession, workers = 7)
+  
+  res_par <- tca_split(
+    X = split_X,
+    W = data$W,
+    C1 = data$C1,
+    C2 = data$C2,
+    vars.mle = TRUE,
+    max_iters = 20
+  )
+  
+  plan(sequential)
+})
+saveRDS(prof_obj, "./assets/modded_parallel_chunk_X_vars.mle_n100_m1e5.rds")
 ```
 
 * The data graph shows 2x memory saving and 6x performance increase.  
@@ -156,8 +234,9 @@ saveRDS(prof_obj, "./assets/modded_parallel_n100_m1e5.rds")
 seq_1_2_1 <- readRDS("./assets/1_2_1_sequential_n100_m1e5.rds")
 seq_1_2_1.mle <- readRDS("./assets/1_2_1_sequential_vars.mle_n100_m1e5.rds")
 seq_modded <- readRDS("./assets/modded_sequential_n100_m1e5.rds")
-seq_modded.mle <-  readRDS("./assets/modded_sequential_vars.mle.n100_m1e5.rds")
+seq_modded.mle <- readRDS("./assets/modded_sequential_vars.mle.n100_m1e5.rds")
 seq_parallel_modded <- readRDS("./assets/modded_parallel_n100_m1e5.rds")
+chunk_X_modded.mle <- readRDS("./assets/modded_parallel_chunk_X_vars.mle_n100_m1e5.rds")
 
 # 1.2.1 vs modded
 seq_1_2_1
@@ -170,6 +249,10 @@ seq_modded.mle
 # modded sequential vs parallel
 seq_modded
 seq_parallel_modded
+
+#  1.2.1 vars mle vs chunk by X modded
+seq_1_2_1.mle
+chunk_X_modded.mle
 ```
 
 ## Linux machine
@@ -177,12 +260,16 @@ seq_parallel_modded
 ```{r}
 set.seed(1234)
 prof_obj <- profvis({
-    tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2 )})
+  tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+})
 saveRDS(prof_obj, "./assets/linux_modded_sequential_n100_m1e5.rds")
 
 prof_obj <- profvis({
-    tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE,
-        num_cores = 3L)})
+  tca(
+    X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, parallel = TRUE,
+    num_cores = 3L
+  )
+})
 saveRDS(prof_obj, "./assets/linux_modded_parallel_n100_m1e5.rds")
 ```
 
@@ -820,5 +907,70 @@ microbenchmark::microbenchmark(
   matrixStats::colSums2(tm)
 )
 ```
+
+## split_input 
+```{r}
+data <- test_data(30, 200000, 6, 1, 1, 0.01)
+split_X <- split_input(X = data$X, n_chunks = 21)
+```
+ 
+```{r}
+fit1 <- tca(X = split_X[[1]], W = data$W, C1 = data$C1, C2 = data$C2, W_C1_C2 = FALSE)
+fit2 <- tca(X = split_X[[2]], W = data$W, C1 = data$C1, C2 = data$C2, W_C1_C2 = FALSE)
+
+fit_final <- purrr::map2(fit1, fit2, \(x, y) {
+  rbind(x, y)
+})
+fit_final$mus_hat
+```
+
+## tca_split
+* Split the work into small chunks and test vs running sequentially and see 
+if the estimates are similar.  
+* Looks like the smaller the chunks, the more the correlation between the 
+sequential run and the chunked run decreases. This is probably because the 
+sigmas_hat and tau_hat are estimated using information from X. More work to be 
+determined to see if its a trade off between time and accuracy if we just chunk
+into "small enough" chunks instead.  
+* If vars.mle = TRUE, the correlation stays high (>0.95) even when chunked into 
+single CpGs/chunk.  
+
+```{r}
+library(TCA)
+library(furrr)
+# devtools::install_github("hhp94/TCA@profiling")
+
+set.seed(1234)
+data <- test_data(30, 10000, 6, 1, 1, 0.01)
+split_X <- split_input(X = data$X, n_chunks = 10000)
+split_X
+dim(split_X)
+
+plan(multisession, workers = 7)
+
+res_par <- tca_split(
+  X = split_X, W = data$W, C1 = data$C1, C2 = data$C2, vars.mle = TRUE,
+  max_iters = 20
+)
+
+plan(sequential)
+
+res_seq <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, vars.mle = TRUE, max_iters = 20)
+res_seq |> lapply(dim)
+res_seq$tau_hat
+res_par$tau_hat |> mean()
+
+setdiff(names(res_par), "tau_hat")
+lapply(setdiff(names(res_par), "tau_hat"), \(x){
+  sapply(
+    seq_len(ncol(res_par[[x]])),
+    \(y) {
+      cor(res_par[[x]][, y], res_seq[[x]][, y])
+    }
+  )
+}) |>
+  purrr::set_names(setdiff(names(res_par), "tau_hat"))
+```
+
 
  

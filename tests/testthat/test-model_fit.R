@@ -112,3 +112,4 @@ test_that("Verify that setting vars.mle to either TRUE or FALSE provides similar
     expect_equal(cor(Reshape(tca.mdl1[[params]], ncol(tca.mdl1[[params]]) * nrow(tca.mdl1[[params]])), Reshape(tca.mdl2[[params]], ncol(tca.mdl2[[params]]) * nrow(tca.mdl2[[params]])))[1] > 0.9, TRUE)
   }
 })
+
