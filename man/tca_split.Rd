@@ -14,10 +14,10 @@ tca_split(
   vars.mle = FALSE,
   constrain_mu = FALSE,
   max_iters = 10,
-  log_file = "TCA_split.log",
+  log_file_prefix = "tca_split",
   debug = FALSE,
   verbose = TRUE,
-  furrr_opt = list(seed = TRUE, packages = "TCA"),
+  furrr_opt = list(seed = TRUE, packages = "TCA", stdout = FALSE),
   ...
 )
 }
@@ -40,7 +40,9 @@ tca_split(
 
 \item{max_iters}{A numeric value indicating the maximal number of iterations to use in the optimization of the TCA model (\code{max_iters} iterations will be used as long as the optimization does not converge earlier).}
 
-\item{log_file}{A path to an output log file. Note that if the file \code{log_file} already exists then logs will be appended to the end of the file. Set \code{log_file} to \code{NULL} to prevent output from being saved into a file; note that if \code{verbose == FALSE} then no output file will be generated regardless of the value of \code{log_file}.}
+\item{log_file_prefix}{prefix of the logs of tca() for each chunk of \code{X_split}.
+For example "f1/log" would store the logs in a folder called "f1" with the
+prefix "log". NULL to suppress logging}
 
 \item{debug}{A logical value indicating whether to set the logger to a more detailed debug level; set \code{debug} to \code{TRUE} before reporting issues.}
 
@@ -79,6 +81,8 @@ Since the standard deviation of \eqn{X_{ji}} is specific to observation \eqn{i} 
 }
 \examples{
 data <- test_data(30, 1000, 6, 1, 1, 0.01)
-split_X <- split_input(X = data$X, n_chunks = 10)
-tca.mdl <- tca_split(X = split_X, W = data$W, C1 = data$C1, C2 = data$C2)
+split_X <- split_input(X = data$X, n_chunks = 5) # split data into 5 chunks
+# library(furrr)
+# plan(multisession, workers = 5) # use 5 cores in a multiple session scheme
+# plan(sequential)
 }

@@ -329,6 +329,26 @@ test_tcareg <- function(d, ...) {
   )
 }
 
+# Check if values are close within tolerance
+near <- function(x, y, tol = .Machine$double.eps^0.5) {
+  # FROM dplyr PACKAGE
+  abs(x - y) < tol
+}
+
+#' Compare the Estimations of Two `tca()` Fits with Machine Tolerance Difference
+#'
+#' @param fit1 first model
+#' @param fit2 second model
+#'
+#' @return a vector of Boolean about whether an element of fit1 is the same as
+#' fit2
+#' @noRd
+compare_fit_equal <- function(fit1, fit2) {
+  sapply(names(fit1), \(x) {
+    all(near(fit1[[x]], fit2[[x]]))
+  })
+}
+
 #' Compare the Correlation of Estimations of Two `tca()` Fits
 #'
 #' @param fit1 first model
@@ -336,7 +356,7 @@ test_tcareg <- function(d, ...) {
 #'
 #' @return list of correlation
 #' @noRd
-compare_fit <- function(fit1, fit2) {
+compare_fit_corr <- function(fit1, fit2) {
   estimates <-
     c(
       "mus_hat", "sigmas_hat", "deltas_hat", "gammas_hat", "deltas_hat_pvals",
@@ -361,6 +381,7 @@ compare_fit <- function(fit1, fit2) {
     )
   )
 }
+
 
 # split_input.validate_input <- purrr::partial(
 #   tca.validate_input,

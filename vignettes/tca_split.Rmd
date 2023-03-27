@@ -1,0 +1,162 @@
+---
+title: "tca_split"
+output: rmarkdown::pdf_document
+vignette: >
+  %\VignetteIndexEntry{tca_split}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Synopsis
+* This vignette shows the behavior of `tca()` and `tca_split()`.  
+* If tau is estimated from the data, either set `vars.mle = TRUE` or the chunk
+size must be big enough. Do both is the best practice because a big enough
+chunk size would minimize the overhead of parallel.  
+* Used appropriately, `tca_split()` and `tca()` returns highly correlated 
+results `(cor > 0.99)`.  
+
+```{r setup}
+library(TCA)
+library(furrr)
+```
+
+# Fit
+* First we run a sequential `TCA::tca()` and one with `vars.mle = TRUE`  
+```{r}
+set.seed(1234)
+n_features <- 150
+data <- test_data(50, n_features, 3, 2, 2, 0.03, verbose = FALSE)
+```
+
+```{r, eval = F}
+tca_seq <- tca(
+  X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+  log_file = NULL, verbose = FALSE
+)
+
+tca_seq_mle <- tca(
+  X = data$X, W = data$W, C1 = data$C1, C2 = data$C2,
+  log_file = NULL, verbose = FALSE, vars.mle = TRUE,
+  max_iters = 20
+) 
+```
+
+* Then we do the same for `tca_split()` under the following scenarios:
+  + There are as many chunks as there are parallel workers, in this case 7.
+  + There are as many chunks as there are features, in this case `r n_features`.
+  + There are as many chunks as there are features, `vars.mle = TRUE`
+  
+```{r}
+split_X_7 <- split_input(data$X, 7, shuffle = TRUE) # Split X into 7 chunks
+split_X <- split_input(data$X, n_features) # Split X into as many chunks as feat
+```
+
+* Fit with `TCA::tca_split()`  
+```{r, eval = FALSE}
+# Not actually ran to save time
+plan(multisession, workers = 7)
+# There are as many chunks as there are parallel workers
+tca_par_7 <- tca_split(
+  split_X_7, W = data$W, C1 = data$C1, C2 = data$C2,
+  log_file_prefix = NULL, verbose = FALSE
+)
+# There are as many chunks as there are features
+tca_par <- tca_split(
+  split_X, W = data$W, C1 = data$C1, C2 = data$C2,
+  log_file_prefix = NULL, verbose = FALSE
+)
+# There are as many chunks as there are features, `vars.mle = TRUE`
+tca_par_mle <- tca_split(
+  split_X, W = data$W, C1 = data$C1, C2 = data$C2,
+  log_file_prefix = NULL, verbose = FALSE,
+  vars.mle = TRUE, max_iters = 20
+)
+plan(sequential)
+```
+
+```{r, eval = FALSE, include = FALSE}
+saveRDS(
+  list(
+    tca_seq = tca_seq,
+    tca_seq_mle = tca_seq_mle,
+    tca_par_7 = tca_par_7,
+    tca_par = tca_par,
+    tca_par_mle = tca_par_mle
+  ),
+  "vignettes/tca_split.rds"
+)
+```
+
+```{r, include = FALSE}
+# raw <- readRDS("./vignettes/tca_split.rds")
+raw <- readRDS("tca_split.rds")
+raw$tca_seq
+for (i in names(raw))  {
+  assign(i, raw[[i]])
+}
+rm(raw)
+```
+
+```{r, include = FALSE}
+# Helper to compare correlation
+compare_fit_corr <- function(fit1, fit2, digits = 4) {
+  estimates <-
+    c(
+      "mus_hat", "sigmas_hat", "deltas_hat", "gammas_hat", "deltas_hat_pvals",
+      "gammas_hat_pvals", "gammas_hat_pvals.joint"
+    )
+
+  align_cor <- function(mat1, mat2) {
+    stopifnot(is.matrix(mat1), is.matrix(mat2))
+    stopifnot(all(row.names(mat1) %in% row.names(mat2)))
+    mat3 <- mat2[row.names(mat1), , drop = FALSE] # Aligning mat2 with mat1
+    return(sapply(seq_len(ncol(mat3)), \(x) {
+      round(cor(mat1[, x], mat3[, x]), digits)
+    }))
+  }
+
+  return(
+    purrr::set_names(
+      lapply(estimates, \(x) {
+        align_cor(fit1[[x]], fit2[[x]])
+      }),
+      estimates
+    )
+  )
+}
+```
+
+# Results  
+* We see that for 7 chunks, the `tca_split()` and `tca()` fits are very correlated.  
+```{r}
+compare_fit_corr(tca_seq, tca_par_7) # tca_seq vs tca_split with 7 Chunks of X
+```
+
+* However, for as many chunks as there are features, the correlation drops 
+significantly. Especially for `sigmas_hat` and `gammas_hat_pvals`.  
+```{r}
+# tca_seq vs tca_split with as many chunks of X as there is features
+compare_fit_corr(tca_seq, tca_par)
+```
+
+* `tau_hat` are close enough.  
+```{r}
+unname(tca_seq$tau_hat)
+mean(tca_par_7$tau_hat)
+mean(tca_par$tau_hat)
+```
+
+* For the as many chunks as there are features `vars.mle = TRUE`, the correlation 
+stays high.  
+```{r}
+# tca_seq vs tca_split with as many chunks of X as there is features, vars.mle = TRUE
+compare_fit_corr(tca_seq_mle, tca_par_mle)
+```
+

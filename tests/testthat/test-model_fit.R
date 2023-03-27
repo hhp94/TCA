@@ -12,7 +12,9 @@ test_that("compare to TCA 1.2.1 fit, typical use", {
     }
   )
 
-  exp_1_df$results <- purrr::map2_lgl(exp_1_df$fit_1_2_1, exp_1_df$new_fit, compare_fit_exact)
+  exp_1_df$results <- purrr::map2_lgl(exp_1_df$fit_1_2_1, exp_1_df$new_fit, \(x, y) {
+    all(compare_fit_equal(x, y))
+  })
   expect_true(all(exp_1_df$results))
 })
 
@@ -29,7 +31,9 @@ test_that("compare to TCA 1.2.1 fit, vars.mle = TRUE", {
     }
   )
 
-  exp_2_df$results <- purrr::map2_lgl(exp_2_df$fit_1_2_1, exp_2_df$new_fit, compare_fit_exact)
+  exp_2_df$results <- purrr::map2_lgl(exp_2_df$fit_1_2_1, exp_2_df$new_fit, \(x, y) {
+    all(compare_fit_equal(x, y))
+  })
   expect_true(all(exp_2_df$results))
 })
 
@@ -49,7 +53,9 @@ test_that("compare to TCA 1.2.1 fit, refit_W = TRUE", {
     }
   )
 
-  exp_3_df$results <- purrr::map2_lgl(exp_3_df$fit_1_2_1, exp_3_df$new_fit, compare_fit_exact)
+  exp_3_df$results <- purrr::map2_lgl(exp_3_df$fit_1_2_1, exp_3_df$new_fit, \(x, y) {
+    all(compare_fit_equal(x, y))
+  })
   expect_true(all(exp_3_df$results))
 })
 

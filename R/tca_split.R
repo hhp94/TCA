@@ -25,8 +25,9 @@
 #' split_X <- split_input(X = data$X, n_chunks = 10)
 #' split_X
 #' dim(split_X)
-split_input <- function(X, n_chunks = 1, shuffle = TRUE) {
+split_input <- function(X, n_chunks = 2, shuffle = TRUE) {
   assert(is.matrix(X), "X must be a matrix")
+  assert(n_chunks > 1, "Must split into more than 1 chunk")
   n_features <- nrow(X)
   assert(n_features >= n_chunks, "Number of features must be greater than number of chunks")
   feat_names <- row.names(X)
@@ -37,18 +38,17 @@ split_input <- function(X, n_chunks = 1, shuffle = TRUE) {
     warning("Typically, there would be more features than observations")
   }
 
-  id <- parallel::splitIndices(nrow(X), n_chunks)
+  if (shuffle) {
+    feat_names <- sample(feat_names, n_features)
+  }
+  
+  id <- lapply(parallel::splitIndices(n_features, n_chunks), \(x) {
+      feat_names[x]
+    })
+  
+  assert(all(sort(feat_names) == sort(unlist(id))), "Unexpected splitting or row.names")
 
-  assert(length(unique(purrr::reduce(id, c))) == length(feat_names), "parallel::splitIndices error")
-
-  res <- lapply(id, \(r) {
-    if (shuffle) {
-      return(X[sample.int(n_features, n_features), ][r, , drop = FALSE])
-    } else {
-      return(X[r, , drop = FALSE])
-    }
-    stop("Unexpected error")
-  })
+  res <- lapply(id, \(r) { X[r, , drop = FALSE] })
 
   return(structure(res, class = c("split_input", "list")))
 }
@@ -103,6 +103,9 @@ dim.split_input <- function(x) {
 #' supported.
 #'
 #' @param X_split output of [split_input()] function.
+#' @param log_file_prefix prefix of the logs of tca() for each chunk of `X_split`.
+#' For example "f1/log" would store the logs in a folder called "f1" with the
+#' prefix "log". NULL to suppress logging
 #' @param furrr_opt list of arguments passed to [furrr::furrr_options()]
 #' @param ... arguments passed to [furrr::future_map()]
 #' @inheritParams tca
@@ -112,45 +115,68 @@ dim.split_input <- function(x) {
 #'
 #' @examples
 #' data <- test_data(30, 1000, 6, 1, 1, 0.01)
-#' split_X <- split_input(X = data$X, n_chunks = 10)
-#' tca.mdl <- tca_split(X = split_X, W = data$W, C1 = data$C1, C2 = data$C2)
+#' split_X <- split_input(X = data$X, n_chunks = 5) # split data into 5 chunks
+#' # library(furrr)
+#' # plan(multisession, workers = 5) # use 5 cores in a multiple session scheme
+# tca.mdl <- tca_split(
+#   X = split_X, W = data$W, C1 = data$C1, C2 = data$C2, log_file_prefix = "log/log"
+# )
+#' # plan(sequential)
 tca_split <- function(
     X_split, W, C1 = NULL, C1.map = NULL, C2 = NULL, tau = NULL, vars.mle = FALSE,
-    constrain_mu = FALSE, max_iters = 10, log_file = "TCA_split.log", debug = FALSE,
-    verbose = TRUE, furrr_opt = list(seed = TRUE, packages = "TCA"), ...) {
-  start_logger(log_file, debug, verbose)
-
-  futile.logger::flog.info(
-    paste("Starting tca over", length(X_split), "chunks...", sep = " ")
-  )
-
-  config <- config::get(file = system.file("extdata", "config.yml", package = "TCA"), use_parent = FALSE)
-
+    constrain_mu = FALSE, max_iters = 10, log_file_prefix = "tca_split", debug = FALSE,
+    verbose = TRUE, furrr_opt = list(seed = TRUE, packages = "TCA", stdout = FALSE), ...) {
+  # Input validation
   assert(
-    "split_input" %in% class(X_split),
-    "X_split can be obtained with split_input()"
+    "split_input" %in% class(X_split), "X_split can be obtained with split_input()"
   )
-
+  assert(length(X_split) > 1, "Must have more than 1 chunk")
   assert(is.list(furrr_opt), "furrr_opt must be a list")
-  assert(isTRUE(furrr_opt$seed), "furrr_opt must have seed = TRUE")
-  assert("TCA" %in% c(furrr_opt$packages), "furrr_opt must have packages = c('TCA')")
+  assert(isTRUE(furrr_opt$seed), "furrr_opt must have `seed = TRUE`")
+  assert("TCA" %in% furrr_opt$packages, 'furrr_opt must have `packages = c("TCA")`')
 
-  fit_fns <- purrr::partial(
+  # Pre-fill arguments into tca()
+  tca_fns <- purrr::partial(
     tca,
     W = W, C1 = C1, C1.map = C1.map, C2 = C2, tau = tau,
     vars.mle = vars.mle, constrain_mu = constrain_mu, max_iters = max_iters,
-    log_file = NULL, debug = FALSE, verbose = FALSE, W_C1_C2 = FALSE
+    debug = debug, verbose = verbose, W_C1_C2 = FALSE
   )
 
-  res <- furrr::future_map(
+  # Handling log, try to write to folder in `log_file_prefix`
+  if (!is.null(log_file_prefix)) {
+    write_test <- paste(log_file_prefix, "writetest", sep = ".")
+    tryCatch(
+      writeLines("", write_test),
+      error = function(cond) { # Error if folder doesn't exist
+        stop("Folder for storing logs doesn't exists")
+      },
+      finally = { # Remove write_test file.
+        unlink(write_test)
+      }
+    ) # Create list of log name for each of the chunk.
+    log_list <- sapply(
+      seq_along(X_split),
+      \(x) {
+        paste(log_file_prefix, x, "log", sep = ".")
+      }
+    )
+  } else {
+    log_list <- list(NULL)
+  }
+
+  # Perform tca fit over chunks
+  res <- furrr::future_map2(
     X_split,
-    \(d) {
-      fit_fns(X = d)
+    log_list,
+    \(d, l) {
+      tca_fns(X = d, log_file = l)
     },
     .options = do.call(eval(parse(text = "furrr::furrr_options")), furrr_opt),
     ...
   )
 
+  # Combining the fit results
   res <- purrr::reduce(
     res, \(x, y) {
       purrr::map2(x, y, \(a, b) {
@@ -161,7 +187,7 @@ tca_split <- function(
   ) |>
     c(list(W = W, C1 = C1, C2 = C2))
 
-  res$tau_hat <- mean(res$tau_hat)
+  res$tau_hat <- as.numeric(res$tau_hat)
 
   return(res)
 }
