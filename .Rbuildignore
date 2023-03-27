@@ -3,3 +3,6 @@
 ^vignettes/profiling\.Rmd$
 ^TCA\.log$
 ^tca_split\.log$
+^doc$
+^Meta$
+^vignettes/profiling\.pdf$

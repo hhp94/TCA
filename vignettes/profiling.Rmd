@@ -1,6 +1,10 @@
 ---
-title: "profiling"
-output: rmarkdown::html_vignette
+title: "Profiling"
+output:
+  rmarkdown::pdf_document:
+    toc: true
+    toc_depth: 1
+    number_sections: true
 vignette: >
   %\VignetteIndexEntry{profiling}
   %\VignetteEngine{knitr::rmarkdown}
@@ -17,44 +21,53 @@ knitr::opts_chunk$set(
 
 # Synopsis
 * `{TCA}` is a great package. But it is running unexpectedly slowly. A 
-moderately sized project (400,000 CpGs * 1000 Samples * 6 Cell Types, 
-`vars.mle = FALSE`) couldn't converge after 12 hours and hit out of memory error 
+moderately sized project (400,000 features * 1000 Samples * 6 Cell Types, 
+`vars.mle = FALSE`) couldn't converge after 10 hours and hit out of memory error 
 with 120GB of RAM.  
-* This fork is created to profile the performance of `{TCA}` and see if there are 
-"low hanging fruit" bottlenecks we can resolve.  
+* After learning about how to use `TCA::tca()` correctly and some optimization,
+we can achieve **13.3x** increase in speed and **2x** decrease in memory usage
+comparing to running `TCA::tca()` version 1.2.1 sequentially. On Windows 
+computers, `TCA::tca()` version 1.2.1 with `parallel = TRUE` might be even 
+slower than sequential runs at certain dimensions (See "Other findings").  
+* In addition to the optimization, added `split_input()` to shuffle the features 
+before splitting them row-wise and `tca_split()` as a wrapper to run 
+`TCA::tca()` in parallel over the chunks of X.  
 
 # Methods
-* Use the amazing `TCA::test_data()` function to simulate data under different
+* Use the `TCA::test_data()` function to simulate data under different
 scenarios  
-* Profile with `profvis::profvis()` and identify bottlenecks  
-* Read the source codes and determine if there are low hanging fruits  
-* Created replicates of fit results from `{TCA}` version 1.2.1 as test fixtures  
+* Profile `TCA::tca()` fits with `profvis::profvis()` and identify bottlenecks    
+* Create replicates of fit results from `{TCA}` version 1.2.1 as test fixtures 
+before any changes  
 * Make small changes, fit the model, and test if all the fit results are within 
 machine tolerance of differences with the test fixtures  
 * Profile the modded version under sequential, `vars.mle = TRUE`, `refit_W = TRUE`,
 `TCA::tcareg()` fit, and parallel runs  
 
 # Results
-* After modifications, running sequentially, we achieved a **6x** speed up in a
+* The results of the modifications passed all the included unit tests and generated 
+estimates within machine tolerance of the fit produced by version 1.2.1 using 
+the same seed.  
+
+## Sequential
+* After modifications, running sequentially, we achieved a 
+<span style="background-color:#26d800">**6x**</span> speed up in a 
 simulation (Fig 1).  
-* Running in parallel over chunks of X, we achieved a **13.3x** speed up in a 
-simulation with `vars.mle = TRUE` (Fig 4).  
 
-![Fig 1, 1.2.1 (left) vs modded (right)](prof_fig_1.2.1_v_mod.png)
-
-</br>  
+![1.2.1 (left) vs modded (right), `tca()` fit time of version 1.2.1 decreased by <span style="background-color:#26d800">6x</span>, memory usage decreased by <span style="background-color: #f8e600">2x</span>](prof_fig_1.2.1_v_mod.png)  
 
 * The major source of speed up achieved is from replacing the `data.frame()`, 
-`lm()`, and `anova()` calls with `RcppEigen::fastLm()` calls. This also helped 
-with <span style="background-color: #f8e600">memory usage by 2x</span>. This is 
+`lm()`, and `anova()` calls with `RcppEigen::fastLm()` and a minimal 
+implementation of the partial F-test. This also helped with 
+<span style="background-color: #f8e600">memory usage by 2x</span>. This is 
 potentially an unsafe change. But the risk is small because    
   + The constrained optimization step before `fastLm()` has internal checks for 
   matrix positive definiteness. Indeed, testing using rank deficient C1 and C2 
   matrices tripped the matrix positive definite checks before `fastLm()` is even
   called.  
-  + `RcppEigen::fastLm()` returns the correct values for rank deficient matrices,
+  + `RcppEigen::fastLm()` [returns the correct values for rank deficient matrices](https://search.r-project.org/CRAN/refmans/RcppArmadillo/html/fastLm.html),
   and we can then use `anyNA()` to check for `NA` of p-values for gamma hats if
-  the optimization throw an error albeit being unnecessary.  
+  the constrained optimization step didn't throw an error.  
   + `NA` is already expected to be taken care of by users.  
   + For 5 repetitions, the returned estimates are the same between the `fastLm()` 
   version and `TCA::tca()` version 1.2.1.  
@@ -62,64 +75,52 @@ potentially an unsafe change. But the risk is small because
   we don't need the extra information of `lm()` objects or the checks and 
   formatting of `stats::anova()` calls. Implementing a minimal version of 
   the partial F-test helped reduced fit time.  
-  + We can also use `lm.fit()` as well to minimize dependencies. `lm.fit()` comes 
+  + We can also use `lm.fit()` instead of `RcppEigen::fastLm`. `lm.fit()` comes 
   with more safety checks and probably no significant differences in performance
   compared to `fastLm()`. But `{RcppEigen}` is so popular that it is probably 
   already installed on most machines so let's stay with `fastLm()` for now.  
-* Replacing `pracma::repmat()` calls with `MESS::repmat()`, which directly calls
-C codes, helped a lot as well. This is because the optimization steps repeatedly 
-calls on this function. Reduced the `tca.fit_means_vars()` times by **1.6x**.  
-* Main bottleneck of `vars.mle = TRUE` fit is from `nloptr()`. A good workflow 
-might be to fit with the alternative optimization for model iteration and then 
-fit one final fit with `vars.mle = TRUE`. Achieved a **3.3x** improvement mostly
-through replacing the 
+* The second source of speed up comes from replacing `pracma::repmat()` calls 
+with `MESS::repmat()`, which directly calls C codes. This is because the 
+optimization steps repeatedly calls on this function. This reduced the 
+`tca.fit_means_vars()` times by <span style="background-color: #ff5500">**1.6x**</span>.  
+* The main resource consumer of the `vars.mle = TRUE` fit is from `nloptr()` to 
+estimate sigma. Achieved a **3.3x** improvement through `fastLM` and replacing the 
 <span style="background-color: #f8e600">replacing the `repmat()` calls </span>
 (Fig 2).   
 
-![Fig 2, vars.mle = TRUE, 1.2.1 (left) vs modded (right)](prof_fig_vars.mle.png)
+![vars.mle = TRUE, 1.2.1 (left) vs modded (right)](prof_fig_vars.mle.png)
 
-</br>  
+## Parallel
+* Combine with the above changes and running in parallel over chunks of X,
+not using the parallel parameter in `tca()`, we achieved a **13.3x** speed up 
+in a simulation with `vars.mle = TRUE` (Fig 3).  
 
-* Importantly, fit results using `{TCA}` version 1.2.1 under multiple repeats and 
-scenarios are saved as test fixtures to make sure changes in `./R/model_fit.R` 
-gives back the same estimates.  
+![1.2.1 sequential (top) vs modded parallel by chunk X (bottom. Note that the memory 
+usage is inaccurate for parallel runs) ](1.2.1_seq_v_modded_chunk_X_par_win.png)
 
-# Best practices
-* We probably shouldn't use the parallel argument in `TCA::tca()`.  
-* On a Windows machine, the <span style="background-color: #26d800">overhead</span> caused by data being shuffled back and 
-forth by PSOCK increased the fit time by **7x** in a small simulation.  
-  
-  ![Fig 3, parallel = TRUE, num_cores = 6 in `tca()` (left) vs sequential (right) PSOCK](prof_fig_seq_v_par_win.png)
-  
-</br>  
-
-* On a Linux machine, the performance using 3 clusters is slower than the 
-sequential run by **1.1x** in a simulation. However, on a HPC where small latency 
-can add up or where huge data is passed to `TCA::tca()`, the data has to be 
-replicated for each fork and the performance might worsen and consume much 
-more memory for slower speed.  
-* [The correct way](https://github.com/cozygene/TCA/issues/1#issuecomment-524380136) to parallel `TCA::tca()` is to chunk the data by X and run 
-parallel over each chunk instead. For example, for 400,000 CpGs, chunk into 
-7 x 50,000\*m chunks or 14 x 30,000\*m chunks and parallel over these chunks for 
-7 cores on a 8 cores machine for example.  
-* However, since the optimization of sigmas_hat and tau_hat uses information 
-from X, it is unconfirmed if chunking by X is valid since the optimization 
-techinically is only using information provided by each chunk.  
-  + Using `vars.mle = TRUE`, the correlation between parameters of a sequential and
-  an extreme chunked run where each CpG is in a chunk is at 0.99. With 
-  `vars.mle = FALSE`, this drops to 0.88.  
-  + This is a favorable trade-off if the author confirm that the findings is 
-  correct. In this simulation, we achieved a **13.3x** increase in performance  
-
-![Fig 4, 1.2.1 sequential (top) vs modded parallel by chunk X (bottom) ](1.2.1_seq_v_modded_chunk_X_par_win.png)
-
-* If `refit_W` is needed. Run the most informative sites instead of the whole 
-epi-genome.  
+* Summarizing this [github question](https://github.com/cozygene/TCA/issues/1), 
+this parallel implementation is valid because `tca()` assumes iid normal error.  
+  + Technically, `tau_hat` is inducing dependencies among features in X if its 
+  estimated from the data. But, it is just one parameter and since we have 
+  so many features, the results won't change much between chunks.  
+* To be even extra cautious about accuracy, which doesn't seem to be necessary,
+for this very favorable speed up, we can  
+  + Make sure the chunk size is big enough. This is needed to minimize the 
+  overhead of parallel anyway.  
+  + Randomly shuffle features into chunks.  
+  + Don't estimate tau from the data. Estimating tau from already published 
+  data of similar population that we are studying and using that estimate should 
+  be more than enough.  
+* `refit_W`, which uses information across features, is invalid for this. 
+If `refit_W` is needed. Run the most informative sites instead of the whole 
+epi-genome and use the resulting estimated W on each chunks as described.  
+* A good workflow might be to fit with the alternative optimization for model 
+iteration and then fit one final fit with `vars.mle = TRUE`.  
 
 # Changelog
 [23/03/26]  
 
-* Added wrappers for running tca by chunks of matrix X in `./R/tca_split.R`.
+* Added wrappers for running `tca()` by chunks of matrix X in `./R/tca_split.R`.  
 
 [23/03/25]  
 
@@ -136,12 +137,38 @@ outside of the `tcareg()` related functions (because `tcareg()` is fast enough).
 
 [23/03/23]  
 
-* Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`  
-* Added `fastLM_ftest()` to `./R/utils.R` to calculate partial f-tests.  
+* Replaced `data.frame()` calls and `lm()` calls in `./R/model_fit.R`.  
+* Added `fastLM_ftest()` to `./R/utils.R` to calculate partial F-tests.  
 * Added test for no result change from ver 1.2.1.  
 
+# Other findings
+* The use of the parallel parameter in `TCA::tca()` might be more situational.  
+* On a Windows machine, the <span style="background-color: #26d800">overhead</span> caused by data being shuffled back and forth by PSOCK increased the fit time by **7x** in a small 
+simulation.  
+  
+![parallel = TRUE, num_cores = 6 in `tca()` (left) vs sequential (right) PSOCK](prof_fig_seq_v_par_win.png)
+
+* On a Linux machine, the performance using 3 clusters is slower than the 
+sequential run by **1.1x** in a simulation. However, on a HPC where small latency 
+can add up or where huge data is passed to `TCA::tca()`, the data has to be 
+replicated for each fork and the performance might worsen and consume much 
+more memory for slower speed.  
+* [The correct way](https://github.com/cozygene/TCA/issues/1#issuecomment-524380136) to parallel `TCA::tca()` is to chunk the data by X and run parallel over each chunk instead. 
+For example, for 400,000 features, chunk into 7 x 50,000\*m chunks or 
+14 x 30,000\*m chunks and parallel over these chunks for 7 cores on a 8 cores 
+machine for example.  
+* However, since the optimization of sigmas_hat and tau_hat uses information 
+from X, it is unconfirmed if chunking by X is valid since the optimization 
+techinically is only using information provided by each chunk.  
+  + Using `vars.mle = TRUE`, the correlation between parameters of a sequential and
+  an extreme chunked run where each CpG is in a chunk is at 0.99. With 
+  `vars.mle = FALSE`, this drops to 0.88.  
+  + This is a favorable trade-off if the author confirm that the findings is 
+  correct. In this simulation, we achieved a **13.3x** increase in performance.  
 
 # Profiling
+* Below are **unorganized** thoughts and notes taken throughout the process.  
+
 ```{r eval = FALSE}
 library(profvis) # Profiling tool
 library(devtools)
@@ -212,9 +239,9 @@ saveRDS(prof_obj, "./assets/modded_parallel_n100_m1e5.rds")
 library(furrr)
 prof_obj <- profvis({
   split_X <- split_input(X = data$X, n_chunks = 7)
-  
+
   plan(multisession, workers = 7)
-  
+
   res_par <- tca_split(
     X = split_X,
     W = data$W,
@@ -223,7 +250,7 @@ prof_obj <- profvis({
     vars.mle = TRUE,
     max_iters = 20
   )
-  
+
   plan(sequential)
 })
 saveRDS(prof_obj, "./assets/modded_parallel_chunk_X_vars.mle_n100_m1e5.rds")
@@ -283,7 +310,7 @@ seq_fork_modded_par
 
 # Notes
 * We see that in `model_fit.R/tca_fit.R`, R is spending  
-  + High peak memory and decent amount of time to call `tca.fit_means_vars()`. 
+  + High peak memory and decent amount of time to call `tca.fit_means_vars()`.  
   This is the internal loop optimization of `tca()`. This is probably where the 
   bottle neck for the loop in parallel mode because the high memory overhead.  
   + High peak memory and a lot of time to call `lm()` and subsequently 
@@ -303,7 +330,7 @@ the X data matrix and the vector y.
 * The `pracma::repmat()` calls are also taking a good amount of time. Looks like
 the implementation in `{MESS}` accomplish the same thing but calls C code 
 directly so it should be faster. This change would add up since `pracma::repmat()` 
-is called a lot.
+is called a lot.  
 
 # Replacing codes
 * Warning, this might be unsafe  
@@ -489,54 +516,7 @@ that is used only once in the function to minimize overhead for `nloptr()`
 * Add a stop for if parallel and refit_W is FALSE. We can probably remove all
 the parallel to be honest and just run the codes over chunks of X.  
 
-## removing memory consuming `<-` calls
-* (TO DO) Check for memory consuming `<-` calls  
-
 # Test
-## Did results change?
-```{r}
-data <- readRDS(test_path("fixtures", "sim1_simdata.rds"))[1, ]
-fitted <- readRDS(test_path("fixtures", "sim1_exp_2_fit_1_2_1.rds"))[1, ]
-
-set.seed(1234)
-
-fitted$new_fit <- lapply(
-  data$df,
-  \(d) {
-    tca(
-      X = d$X,
-      W = d$W,
-      C1 = d$C1,
-      C2 = d$C2,
-      vars.mle = TRUE
-    )
-  }
-)
-
-sapply(
-  1:length(fitted$fit_1_2_1[[1]]),
-  \(x) {
-    max(fitted$fit_1_2_1[[1]][[x]] - fitted$new_fit[[1]][[x]])
-  }
-)
-
-fitted$fit_1_2_1[[1]] - fitted$new_fit[[1]]
-compare_fit <- function(o, n) {
-  all(sapply(names(o), \(x) {
-    all(near(o[[x]], n[[x]]))
-  }))
-}
-
-fitted$results <- purrr::map2_lgl(
-  fitted$fit_1_2_1,
-  fitted$new_fit,
-  compare_fit
-)
-
-plan(sequential)
-# waldo::compare(fitted$deltas_hat_pvals, tca.mdl$deltas_hat_pvals)
-```
-
 ## fastLm
 The two code chunks that were replaced has to be tested concurrently  
 ```{r}
@@ -933,7 +913,7 @@ sigmas_hat and tau_hat are estimated using information from X. More work to be
 determined to see if its a trade off between time and accuracy if we just chunk
 into "small enough" chunks instead.  
 * If vars.mle = TRUE, the correlation stays high (>0.95) even when chunked into 
-single CpGs/chunk.  
+single features/chunk.  
 
 ```{r}
 library(TCA)
@@ -947,29 +927,22 @@ split_X
 dim(split_X)
 
 plan(multisession, workers = 7)
-
 res_par <- tca_split(
   X = split_X, W = data$W, C1 = data$C1, C2 = data$C2, vars.mle = TRUE,
   max_iters = 20
 )
-
 plan(sequential)
 
-res_seq <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2, vars.mle = TRUE, max_iters = 20)
+res_seq <- tca(X = data$X, W = data$W, C1 = data$C1, C2 = data$C2)
+
 res_seq |> lapply(dim)
 res_seq$tau_hat
-res_par$tau_hat |> mean()
+res_seq_2$tau_hat
 
-setdiff(names(res_par), "tau_hat")
-lapply(setdiff(names(res_par), "tau_hat"), \(x){
-  sapply(
-    seq_len(ncol(res_par[[x]])),
-    \(y) {
-      cor(res_par[[x]][, y], res_seq[[x]][, y])
-    }
-  )
-}) |>
-  purrr::set_names(setdiff(names(res_par), "tau_hat"))
+setdiff(names(res_seq), "tau_hat")
+sapply(compare_fit(res_seq, res_seq_2), \(x) {
+  all(x > 0.96)
+})
 ```
 
 

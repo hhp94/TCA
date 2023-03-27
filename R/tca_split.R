@@ -6,6 +6,10 @@
 #'
 #' @inheritParams tca
 #' @param n_chunks number of chunks to split X into. See Details.
+#' @param shuffle randomly shuffle rows of X. This is used to make sure estimates
+#' of tau from the data if requested is not confounded by the order of the features
+#' if the data is run in chunks of X. Picking number of chunks equal to the
+#' number of cores to parallel over is recommended.
 #'
 #' @details
 #' Because of the assumption of independence between features of [tca()], splitting
@@ -21,14 +25,16 @@
 #' split_X <- split_input(X = data$X, n_chunks = 10)
 #' split_X
 #' dim(split_X)
-split_input <- function(X, n_chunks = 1) {
+split_input <- function(X, n_chunks = 1, shuffle = TRUE) {
   assert(is.matrix(X), "X must be a matrix")
-  assert(nrow(X) >= n_chunks, "Number of features must be greater than number of chunks")
+  n_features <- nrow(X)
+  assert(n_features >= n_chunks, "Number of features must be greater than number of chunks")
   feat_names <- row.names(X)
   assert(!is.null(feat_names), "X must have row names")
   assert(length(feat_names) == length(unique(feat_names)), "Row names of X must be unique")
-  if (nrow(X) <= ncol(X)) {
-    warning("X is expected to be tall not wide")
+
+  if (n_features <= ncol(X)) {
+    warning("Typically, there would be more features than observations")
   }
 
   id <- parallel::splitIndices(nrow(X), n_chunks)
@@ -36,8 +42,14 @@ split_input <- function(X, n_chunks = 1) {
   assert(length(unique(purrr::reduce(id, c))) == length(feat_names), "parallel::splitIndices error")
 
   res <- lapply(id, \(r) {
-    X[r, , drop = FALSE]
+    if (shuffle) {
+      return(X[sample.int(n_features, n_features), ][r, , drop = FALSE])
+    } else {
+      return(X[r, , drop = FALSE])
+    }
+    stop("Unexpected error")
   })
+
   return(structure(res, class = c("split_input", "list")))
 }
 
@@ -148,6 +160,8 @@ tca_split <- function(
     .dir = "forward"
   ) |>
     c(list(W = W, C1 = C1, C2 = C2))
+
+  res$tau_hat <- mean(res$tau_hat)
 
   return(res)
 }

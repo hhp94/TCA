@@ -4,12 +4,17 @@
 \alias{split_input}
 \title{Split \code{\link[=tca]{tca()}} Input into Chunks by X}
 \usage{
-split_input(X, n_chunks = 1)
+split_input(X, n_chunks = 1, shuffle = TRUE)
 }
 \arguments{
 \item{X}{An \code{m} by \code{n} matrix of measurements of \code{m} features for \code{n} observations. Each column in \code{X} is assumed to be a mixture of \code{k} sources. Note that \code{X} must include row names and column names and that NA values are currently not supported. \code{X} should not include features that are constant across all observations.}
 
 \item{n_chunks}{number of chunks to split X into. See Details.}
+
+\item{shuffle}{randomly shuffle rows of X. This is used to make sure estimates
+of tau from the data if requested is not confounded by the order of the features
+if the data is run in chunks of X. Picking number of chunks equal to the
+number of cores to parallel over is recommended.}
 }
 \value{
 a split_input object that contains chunks of the X matrix by row.

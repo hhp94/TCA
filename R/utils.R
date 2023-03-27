@@ -269,10 +269,23 @@ parse_features_metadata <- function(feature_ids, features_metadata_file) {
   return(metadata[feature_ids, 2:ncol(metadata)])
 }
 
+#' Calculate the Sum of Squared Errors and Get the Model DF
+#'
+#' @param object a fastLm or lm() or lm.fit() object
+#'
+#' @return a vector of SSE and deg of freedom
+#' @noRd
 fastLm_stats <- function(object) {
   return(c("SSE" = sum(object$residuals^2), "rdf" = object$df.residual))
 }
 
+#' Minimal Implementation of the Partial F-test
+#'
+#' @param rm reduced model.
+#' @param fm full model.
+#'
+#' @return F statistics and p.value
+#' @noRd
 fastLM_ftest <- function(rm, fm) {
   rm_s <- fastLm_stats(rm)
   fm_s <- fastLm_stats(fm)
@@ -291,14 +304,13 @@ fastLM_ftest <- function(rm, fm) {
   )
 }
 
-
 #' Wrapper for Testing tcareg
 #'
 #' @param d list of input matrixces, X, W, C1 and C2 required
 #' @param ... args passed to tcareg
 #'
 #' @return a [tcareg()] fit
-#' @keywords internal
+#' @noRd
 test_tcareg <- function(d, ...) {
   stage_1 <- tca(
     X = d$X,
@@ -317,6 +329,38 @@ test_tcareg <- function(d, ...) {
   )
 }
 
+#' Compare the Correlation of Estimations of Two `tca()` Fits
+#'
+#' @param fit1 first model
+#' @param fit2 second model
+#'
+#' @return list of correlation
+#' @noRd
+compare_fit <- function(fit1, fit2) {
+  estimates <-
+    c(
+      "mus_hat", "sigmas_hat", "deltas_hat", "gammas_hat", "deltas_hat_pvals",
+      "gammas_hat_pvals", "gammas_hat_pvals.joint"
+    )
+
+  align_cor <- function(mat1, mat2) {
+    stopifnot(is.matrix(mat1), is.matrix(mat2))
+    assert(all(row.names(mat1) %in% row.names(mat2)), "Fits must be comparing the same features")
+    mat3 <- mat2[row.names(mat1), , drop = FALSE] # Aligning mat2 with mat1
+    return(sapply(seq_len(ncol(mat3)), \(x) {
+      cor(mat1[, x], mat3[, x])
+    }))
+  }
+
+  return(
+    purrr::set_names(
+      lapply(estimates, \(x) {
+        align_cor(fit1[[x]], fit2[[x]])
+      }),
+      estimates
+    )
+  )
+}
 
 # split_input.validate_input <- purrr::partial(
 #   tca.validate_input,
